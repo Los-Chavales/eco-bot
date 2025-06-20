@@ -233,4 +233,4 @@ cython_debug/
 
 
 # Environment directories
-.robot_env/
+robot_env/
