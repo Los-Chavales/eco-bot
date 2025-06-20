@@ -30,22 +30,21 @@ class WasteDetectionSystem:
         
         # Cargar modelo YOLO pre-entrenado
         print("Cargando modelo YOLO...")
-        self.model = YOLO('yolov8n.pt')  # Modelo nano para mayor velocidad
-        
+        self.model = YOLO('last.pt')
+        print(self.model.names)
         # Clases específicas que nos interesan (índices de COCO dataset)
         # Estas son las clases más relevantes para desechos
         self.target_classes = {
-            'bottle': 39,      # botellas
-            'cup': 41,         # vasos
-            'fork': 42,        # tenedores
-            'knife': 43,       # cuchillos
-            'spoon': 44,       # cucharas
-            'bowl': 45,        # bowls/recipientes
-            # Nota: Para envolturas y servilletas específicas, podrías entrenar un modelo personalizado
+            'can': 2,                # latas
+            'plastic_bag': 10,       # bolsa plástica
+            'scrap_paper': 17,       # papel de desecho
+            'reuseable_paper': 16,   # papel reutilizable
+            'plastic_cup': 14,       # vaso plástico
+            'snack_bag': 19,         # bolsas de snacks
         }
         
         # Configuración de detección
-        self.confidence_threshold = 0.5
+        self.confidence_threshold = 0.1
         self.frame_width = 640
         self.frame_height = 480
         
@@ -77,18 +76,19 @@ class WasteDetectionSystem:
     
     def send_command_to_esp32(self, command):
         """Envía comando al ESP32"""
-        try:
-            url = f"http://{self.esp32_ip}:{self.esp32_port}/{command}"
-            response = requests.get(url, timeout=2)
-            if response.status_code == 200:
-                print(f"Comando enviado: {command}")
-                return True
-            else:
-                print(f"Error enviando comando: {response.status_code}")
-                return False
-        except Exception as e:
-            print(f"Error comunicando con ESP32: {e}")
-            return False
+        print(f"Comando enviado: {command}")
+        # try:
+        #     url = f"http://{self.esp32_ip}:{self.esp32_port}/{command}"
+        #     response = requests.get(url, timeout=2)
+        #     if response.status_code == 200:
+        #         print(f"Comando enviado: {command}")
+        #         return True
+        #     else:
+        #         print(f"Error enviando comando: {response.status_code}")
+        #         return False
+        # except Exception as e:
+        #     print(f"Error comunicando con ESP32: {e}")
+        #     return False
     
     def detect_waste(self, frame):
         """Detecta desechos en el frame"""

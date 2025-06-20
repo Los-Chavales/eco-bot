@@ -36,8 +36,8 @@ class WasteDetectionSystem:
         self.white_paper_upper = np.array([180, 30, 255])
         
         # Envolturas coloridas (ajustar según necesidad)
-        self.colorful_lower = np.array([0, 50, 50])
-        self.colorful_upper = np.array([180, 255, 255])
+        # self.colorful_lower = np.array([0, 50, 50])
+        # self.colorful_upper = np.array([180, 255, 255])
         
         # Parámetros de filtrado
         self.min_contour_area = 500  # Área mínima para considerar un objeto
@@ -74,8 +74,8 @@ class WasteDetectionSystem:
         masks.append(("papel_blanco", white_mask))
         
         # Máscara para objetos coloridos (envolturas)
-        colorful_mask = cv2.inRange(hsv, self.colorful_lower, self.colorful_upper)
-        masks.append(("envoltura", colorful_mask))
+        # colorful_mask = cv2.inRange(hsv, self.colorful_lower, self.colorful_upper)
+        # masks.append(("envoltura", colorful_mask))
         
         # Procesar cada máscara
         for waste_type, mask in masks:
@@ -161,20 +161,21 @@ class WasteDetectionSystem:
     
     def send_command_to_esp32(self, command):
         """Envía comando al ESP32"""
-        try:
-            payload = {"command": command, "timestamp": datetime.now().isoformat()}
-            response = requests.post(self.esp32_command_url, 
-                                   json=payload, 
-                                   timeout=2)
-            if response.status_code == 200:
-                print(f"Comando enviado: {command}")
-                return True
-            else:
-                print(f"Error enviando comando: {response.status_code}")
-                return False
-        except Exception as e:
-            print(f"Error conectando con ESP32: {e}")
-            return False
+        print(f"Comando enviado: {command}")
+        # try:
+        #     payload = {"command": command, "timestamp": datetime.now().isoformat()}
+        #     response = requests.post(self.esp32_command_url, 
+        #                            json=payload, 
+        #                            timeout=2)
+        #     if response.status_code == 200:
+        #         print(f"Comando enviado: {command}")
+        #         return True
+        #     else:
+        #         print(f"Error enviando comando: {response.status_code}")
+        #         return False
+        # except Exception as e:
+        #     print(f"Error conectando con ESP32: {e}")
+        #     return False
     
     def draw_detection_info(self, frame, waste_objects):
         """Dibuja información de detección en el frame"""
