@@ -10,7 +10,7 @@ from collections import deque
 import math
 
 class WasteDetectionSystem:
-    def __init__(self, phone_ip="192.168.1.13", phone_port=8080, esp32_ip="192.168.1.101", esp32_port=80):
+    def __init__(self, phone_ip="192.168.0.101", phone_port=8080, esp32_ip="192.168.1.101", esp32_port=80):
         """
         Sistema de detección de desechos para robot recolector
         
@@ -30,21 +30,26 @@ class WasteDetectionSystem:
         
         # Cargar modelo YOLO pre-entrenado
         print("Cargando modelo YOLO...")
-        self.model = YOLO('last.pt')
-        print(self.model.names)
+        try:
+            self.model = YOLO('last.pt')
+            print(self.model.names)
+        except Exception as e:
+            print(f"Error cargando el modelo YOLO: {e}")
+            raise
+        
         # Clases específicas que nos interesan (índices de COCO dataset)
         # Estas son las clases más relevantes para desechos
         self.target_classes = {
-            'can': 2,                # latas
+            #'can': 2,                # latas
             'plastic_bag': 10,       # bolsa plástica
             'scrap_paper': 17,       # papel de desecho
-            'reuseable_paper': 16,   # papel reutilizable
+            #'reuseable_paper': 16,   # papel reutilizable
             'plastic_cup': 14,       # vaso plástico
-            'snack_bag': 19,         # bolsas de snacks
+            #'snack_bag': 19,         # bolsas de snacks
         }
         
         # Configuración de detección
-        self.confidence_threshold = 0.1
+        self.confidence_threshold = 0.3
         self.frame_width = 640
         self.frame_height = 480
         
@@ -54,6 +59,7 @@ class WasteDetectionSystem:
         # Variables de control
         self.running = False
         self.current_target = None
+        self._last_command = None  # Para evitar comandos redundantes
         
         print("Sistema inicializado correctamente")
     
@@ -75,7 +81,10 @@ class WasteDetectionSystem:
             return False
     
     def send_command_to_esp32(self, command):
-        """Envía comando al ESP32"""
+        """Envía comando al ESP32 (optimizado para no repetir comandos consecutivos)"""
+        if self._last_command == command:
+            return  # No reenvíes el mismo comando
+        self._last_command = command
         print(f"Comando enviado: {command}")
         # try:
         #     url = f"http://{self.esp32_ip}:{self.esp32_port}/{command}"
@@ -92,6 +101,9 @@ class WasteDetectionSystem:
     
     def detect_waste(self, frame):
         """Detecta desechos en el frame"""
+        # Redimensionar el frame para asegurar tamaño consistente
+        if frame.shape[1] != self.frame_width or frame.shape[0] != self.frame_height:
+            frame = cv2.resize(frame, (self.frame_width, self.frame_height))
         # Ejecutar detección YOLO
         results = self.model(frame, conf=self.confidence_threshold)
         
@@ -116,6 +128,7 @@ class WasteDetectionSystem:
                         center_y = int((y1 + y2) / 2)
                         width = int(x2 - x1)
                         height = int(y2 - y1)
+                        area = width * height
                         
                         detection = {
                             'class_name': class_name,
@@ -124,11 +137,33 @@ class WasteDetectionSystem:
                             'center_y': center_y,
                             'width': width,
                             'height': height,
+                            'area': area,
                             'bbox': (int(x1), int(y1), int(x2), int(y2))
                         }
                         detections.append(detection)
         
         return detections
+    
+    def get_smoothed_detections(self, k=3):
+        """Devuelve una lista de detecciones suavizadas usando los últimos k frames."""
+        if len(self.detection_history) < k:
+            return []
+        # Aplanar y contar ocurrencias de clases detectadas
+        recent = list(self.detection_history)[-k:]
+        class_counter = {}
+        for det_list in recent:
+            for d in det_list:
+                key = d['class_name']
+                if key not in class_counter:
+                    class_counter[key] = 0
+                class_counter[key] += 1
+        # Selecciona detecciones cuya clase aparece en la mayoría de los frames recientes
+        most_common_classes = {k for k, v in class_counter.items() if v == max(class_counter.values(), default=0)}
+        # Devuelve sólo las detecciones de la clase más común en el último frame
+        if recent:
+            filtered = [d for d in recent[-1] if d['class_name'] in most_common_classes]
+            return filtered if filtered else recent[-1]
+        return []
     
     def calculate_movement_direction(self, detections):
         """Calcula la dirección de movimiento hacia el desecho más cercano"""
@@ -136,7 +171,7 @@ class WasteDetectionSystem:
             return None
         
         # Encontrar el desecho más grande (más cercano probablemente)
-        largest_detection = max(detections, key=lambda x: x['width'] * x['height'])
+        largest_detection = max(detections, key=lambda x: x['area'])
         
         # Calcular posición relativa respecto al centro del frame
         frame_center_x = self.frame_width // 2
@@ -160,7 +195,7 @@ class WasteDetectionSystem:
                 command = "turn_right"
             else:
                 command = "turn_left"
-        elif largest_detection['width'] * largest_detection['height'] < 10000:  # Si el objeto es pequeño (lejano)
+        elif largest_detection['area'] < 10000:  # Si el objeto es pequeño (lejano)
             command = "move_forward"
         else:
             command = "stop"  # Objeto cerca, detener para recolectar
@@ -212,13 +247,13 @@ class WasteDetectionSystem:
                 # Agregar a historial para suavizar
                 self.detection_history.append(detections)
                 
-                # Calcular movimiento solo si tenemos suficiente historial
+                # Calcular movimiento sólo si tenemos suficiente historial
                 if len(self.detection_history) >= 3:
-                    # Usar las detecciones más recientes
-                    recent_detections = self.detection_history[-1]
+                    # Usar las detecciones suavizadas
+                    smoothed_detections = self.get_smoothed_detections(k=3)
                     
-                    if recent_detections:
-                        movement = self.calculate_movement_direction(recent_detections)
+                    if smoothed_detections:
+                        movement = self.calculate_movement_direction(smoothed_detections)
                         
                         if movement:
                             # Enviar comando al ESP32
@@ -255,7 +290,11 @@ class WasteDetectionSystem:
         self.running = False
         if hasattr(self, 'cap'):
             self.cap.release()
-        cv2.destroyAllWindows()
+        # Asegura que sólo se destruya la ventana si fue abierta
+        try:
+            cv2.destroyAllWindows()
+        except Exception as e:
+            print(f"Error cerrando ventanas de OpenCV: {e}")
         
         # Enviar comando de parar al robot
         self.send_command_to_esp32("stop")
@@ -267,7 +306,7 @@ def main():
     print("Configurando sistema...")
     
     # Configurar IPs (cambiar según tu red)
-    PHONE_IP = "192.168.1.13"  # IP de tu teléfono
+    PHONE_IP = "192.168.0.101"  # IP de tu teléfono
     ESP32_IP = "192.168.1.101"  # IP de tu ESP32
     
     # Crear e inicializar sistema
