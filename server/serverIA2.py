@@ -9,7 +9,7 @@ from datetime import datetime
 class WasteDetectionSystem:
     VALID_COMMANDS = {"FORWARD", "LEFT", "RIGHT", "STOP", "COLLECT"}
 
-    def __init__(self, phone_ip="192.168.0.101", phone_port=8080, esp32_ip="192.168.1.101", esp32_port=80):
+    def __init__(self, phone_ip="192.168.0.103", phone_port=8080, esp32_ip="192.168.0.101", esp32_port=80):
         self.phone_ip = phone_ip
         self.phone_port = phone_port
         self.esp32_ip = esp32_ip
@@ -171,8 +171,8 @@ class WasteDetectionSystem:
         print("Sistema detenido")
 
 def main():
-    PHONE_IP = "192.168.0.101"
-    ESP32_IP = "192.168.1.101"
+    PHONE_IP = "192.168.0.103"
+    ESP32_IP = "192.168.0.101"
     waste_detector = WasteDetectionSystem(
         phone_ip=PHONE_IP,
         phone_port=8080,

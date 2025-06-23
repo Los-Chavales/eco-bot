@@ -3,19 +3,19 @@
 #include <ArduinoJson.h>
 
 // Configuración WiFi
-const char* ssid = "DARTHNEO_WIFI";
-const char* password = "DARTHNEO_PASSWORD";
+const char* ssid = "snowden";
+const char* password = "qwertyasdfghzxcvb54321";
 
 // Pines del L298N (ajusta según tu conexión)
-#define IN1  14  // Motor A
-#define IN2  27
-#define IN3  26  // Motor B
-#define IN4  25
-#define ENA  32  // PWM Motor A
-#define ENB  33  // PWM Motor B
+#define IN1  27  // Motor A
+#define IN2  26
+#define IN3  25  // Motor B
+#define IN4  33
+#define ENA  13  // PWM Motor A
+#define ENB  14  // PWM Motor B
 
 // Pin del relé para mecanismo de recolección
-#define RELAY_PIN  4
+#define RELAY_PIN  23
 
 // PWM
 #define PWM_FREQ     1000
