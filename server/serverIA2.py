@@ -19,7 +19,7 @@ class WasteDetectionSystem:
         self.esp32_command_url = f"http://{esp32_ip}/command"
 
         print("Cargando modelo YOLO...")
-        self.model = YOLO('last.pt')
+        self.model = YOLO('./server/models/last.pt')
         print(self.model.names)
 
         self.confidence_threshold = 0.3
