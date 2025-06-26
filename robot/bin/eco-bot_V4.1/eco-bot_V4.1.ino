@@ -33,7 +33,7 @@ const char* password = "qwertyasdfghzxcvb54321";
 #define PWM_CHANNEL_A 0
 #define PWM_CHANNEL_B 1
 #define PWM_RESOLUTION 8
-#define MOTOR_SPEED 130  // 0-255
+#define MOTOR_SPEED 115  // 0-255
 
 // PWM para nuevo L298N
 #define NEW_PWM_FREQ     1000
@@ -41,7 +41,7 @@ const char* password = "qwertyasdfghzxcvb54321";
 #define NEW_PWM_CHANNEL_B 3
 #define NEW_PWM_RESOLUTION 8
 #define COLLECTOR_SPEED 255      // 100% para recolección
-#define COMPACTOR_SPEED 191      // 75% para compactador (255*0.75)
+#define COMPACTOR_SPEED 180      // 75% para compactador (255*0.75)
 
 // PWM para Servos
 #define SERVO_PWM_FREQ 50       // Frecuencia de 50Hz para servos
