@@ -72,6 +72,7 @@ WiFiClient telnetClient;
 // Estado del sistema
 enum SystemState {
   NORMAL,
+  COLLECTING,
   WAITING_FOR_STOP,
   WAITING_FOR_COMPACTOR,
   COMPACTING
@@ -81,6 +82,17 @@ volatile SystemState systemState = NORMAL;
 // Temporizador compactador
 unsigned long compactTimerStart = 0;
 const unsigned long compactDelay = 10000; // 10s
+const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de recolección
+
+// Tiempos del proceso de compactación
+const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
+const unsigned long COMPACTOR_FORWARD_DURATION = 4000; // 4s motor compactador hacia adelante
+const unsigned long COMPACTOR_WAIT_DURATION = 3000;    // 3s de espera entre movimientos del compactador
+const unsigned long COMPACTOR_BACKWARD_DURATION = 4000; // 4s motor compactador hacia atrás
+const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
+
+// Temporizador recolección
+unsigned long collectorTimerStart = 0;
 
 // Prototipos
 void handleCommand();
@@ -303,10 +315,9 @@ void executeMovement(String command) {
   } else if (command == "COLLECT") {
     stopMotors();
     activateCollector(true);
-    delay(5000); // Mantener el motor de recolección 1s
-    activateCollector(false);
-    // Esperar STOP para activar compactador
-    systemState = WAITING_FOR_STOP;
+    // Iniciar proceso de recolección no bloqueante
+    systemState = COLLECTING;
+    collectorTimerStart = millis();
   } else {
     stopMotors();
     activateCollector(false);
@@ -416,6 +427,16 @@ void processTimers() {
   static unsigned long compactorStepStart = 0;
   static int compactorStep = 0;
 
+  // Proceso de recolección no bloqueante
+  if (systemState == COLLECTING) {
+    activateCollector(true);
+    if (millis() - collectorTimerStart >= COLLECTOR_DURATION) {
+      activateCollector(false);
+      systemState = WAITING_FOR_STOP;
+      // Reiniciar temporizador de compactación aquí si es necesario, o se hará en WAITING_FOR_STOP
+    }
+  }
+
   // Esperando para activar compactador
   if (systemState == WAITING_FOR_COMPACTOR && compactTimerStart > 0) {
     if (millis() - compactTimerStart >= compactDelay) {
@@ -432,37 +453,37 @@ void processTimers() {
   if (systemState == COMPACTING && compactorStarted) {
     unsigned long now = millis();
     switch (compactorStep) {
-      case 0: // Esperar a que cierre compuerta (1.5s)
-        if (now - compactorStepStart > 1500) {
+      case 0: // Esperar a que cierre compuerta
+        if (now - compactorStepStart > COMPACTOR_CLOSE_GATE_DELAY) {
           runCompactorMotor(true, COMPACTOR_SPEED); // Adelante (compactar)
           compactorStepStart = now;
           compactorStep = 1;
         }
         break;
-      case 1: // Motor adelante 2s
-        if (now - compactorStepStart > 2000) {
+      case 1: // Motor adelante
+        if (now - compactorStepStart > COMPACTOR_FORWARD_DURATION) {
           stopCompactorMotor();
           compactorStepStart = now;
           compactorStep = 2;
         }
         break;
-      case 2: // Esperar 3s
-        if (now - compactorStepStart > 3000) {
+      case 2: // Esperar
+        if (now - compactorStepStart > COMPACTOR_WAIT_DURATION) {
           runCompactorMotor(false, COMPACTOR_SPEED); // Atrás (volver a recolectar)
           compactorStepStart = now;
           compactorStep = 3;
         }
         break;
-      case 3: // Motor atrás 2s
-        if (now - compactorStepStart > 2000) {
+      case 3: // Motor atrás
+        if (now - compactorStepStart > COMPACTOR_BACKWARD_DURATION) {
           stopCompactorMotor();
           openFrontGate();
           compactorStepStart = now;
           compactorStep = 4;
         }
         break;
-      case 4: // Esperar a que abra compuerta (1.5s)
-        if (now - compactorStepStart > 1500) {
+      case 4: // Esperar a que abra compuerta
+        if (now - compactorStepStart > COMPACTOR_OPEN_GATE_DELAY) {
           // Fin del proceso
           systemState = NORMAL;
           compactorStarted = false;
