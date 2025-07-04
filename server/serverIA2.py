@@ -3,8 +3,13 @@ import numpy as np
 from ultralytics import YOLO
 import requests
 import time
+import logging
+import asyncio
 from collections import deque
 from datetime import datetime
+
+# Configuración básica de logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class WasteDetectionSystem:
     VALID_COMMANDS = {"FORWARD", "LEFT", "RIGHT", "STOP", "COLLECT"}
@@ -18,9 +23,9 @@ class WasteDetectionSystem:
         self.video_url = f"http://{phone_ip}:{phone_port}/video"
         self.esp32_command_url = f"http://{esp32_ip}/command"
 
-        print("Cargando modelo YOLO...")
+        logging.info("Cargando modelo YOLO...")
         self.model = YOLO('./server/models/last.pt')
-        print(self.model.names)
+        logging.info(f"Modelo YOLO cargado. Clases: {self.model.names}")
 
         self.confidence_threshold = 0.3
         self.frame_width = 640
@@ -30,7 +35,7 @@ class WasteDetectionSystem:
         self.running = False
         self._last_command = None
 
-        print("Sistema inicializado correctamente")
+        logging.info("Sistema inicializado correctamente")
 
     def connect_to_video_stream(self):
         try:
@@ -42,7 +47,7 @@ class WasteDetectionSystem:
             print(f"Conectado al stream de video: {self.video_url}")
             return True
         except Exception as e:
-            print(f"Error conectando al video: {e}")
+            logging.error(f"Error conectando al video: {e}")
             return False
 
     def send_command_to_esp32(self, command):
@@ -51,16 +56,16 @@ class WasteDetectionSystem:
         if command not in self.VALID_COMMANDS:
             command = "STOP"
         self._last_command = command
-        print(f"Comando enviado: {command}")
+        logging.info(f"Comando enviado: {command}")
         try:
             payload = {"command": command, "timestamp": datetime.now().isoformat()}
             response = requests.post(self.esp32_command_url, json=payload, timeout=2)
             if response.status_code == 200:
-                print(f"Comando {command} enviado correctamente")
+                logging.info(f"Comando {command} enviado correctamente")
             else:
-                print(f"Error enviando comando: {response.status_code}")
+                logging.error(f"Error enviando comando: {response.status_code}")
         except Exception as e:
-            print(f"Error comunicando con ESP32: {e}")
+            logging.error(f"Error comunicando con ESP32: {e}")
 
     def detect_waste(self, frame):
         if frame.shape[1] != self.frame_width or frame.shape[0] != self.frame_height:
@@ -131,7 +136,7 @@ class WasteDetectionSystem:
         if not self.connect_to_video_stream():
             return
         self.running = True
-        print("Iniciando detección de desechos...")
+        logging.info("Iniciando detección de desechos...")
 
         try:
             last_command_time = 0
@@ -139,7 +144,7 @@ class WasteDetectionSystem:
             while self.running:
                 ret, frame = self.cap.read()
                 if not ret:
-                    print("Error leyendo frame")
+                    logging.error("Error leyendo frame")
                     break
                 detections = self.detect_waste(frame)
                 command = self.calculate_movement_command(detections)
@@ -155,7 +160,7 @@ class WasteDetectionSystem:
                     break
                 time.sleep(0.05)
         except KeyboardInterrupt:
-            print("Deteniendo sistema...")
+            logging.info("Deteniendo sistema...")
         finally:
             self.stop()
 
