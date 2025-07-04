@@ -6,11 +6,6 @@
 const char* ssid = "snowden";
 const char* password = "qwertyasdfghzxcvb54321";
 
-// Configuración de IP Fija
-IPAddress local_IP(192, 168, 0, 115);
-IPAddress gateway(192, 168, 0, 1);
-IPAddress subnet(255, 255, 255, 0);
-
 // Pines del L298N original (desplazamiento)
 #define IN1  23  // Motor A
 #define IN2  22
@@ -110,44 +105,10 @@ void writeServoAngle(int pin, int channel, int angle);
 void checkWiFiConnection();
 void telnetPrintln(const String& msg);
 void telnetPrint(const String& msg);
-String getWiFiDisconnectReason(uint8_t reasonCode);
 
 // Temporizador para mensajes de WiFi
 unsigned long lastWiFiStatusPrint = 0;
-const unsigned long WIFI_STATUS_INTERVAL = 5000; // 5 segundos
-
-String getWiFiDisconnectReason(uint8_t reasonCode) {
-  switch (reasonCode) {
-    case WIFI_REASON_UNSPECIFIED: return "UNSPECIFIED";
-    case WIFI_REASON_AUTH_EXPIRE: return "AUTH_EXPIRE";
-    case WIFI_REASON_AUTH_LEAVE: return "AUTH_LEAVE";
-    case WIFI_REASON_ASSOC_EXPIRE: return "ASSOC_EXPIRE";
-    case WIFI_REASON_ASSOC_TOOMANY: return "ASSOC_TOOMANY";
-    case WIFI_REASON_NOT_AUTHED: return "NOT_AUTHED";
-    case WIFI_REASON_NOT_ASSOCED: return "NOT_ASSOCED";
-    case WIFI_REASON_ASSOC_LEAVE: return "ASSOC_LEAVE";
-    case WIFI_REASON_ASSOC_NOT_AUTHED: return "ASSOC_NOT_AUTHED";
-    case WIFI_REASON_DISASSOC_AP_BUSY: return "DISASSOC_AP_BUSY";
-    case WIFI_REASON_ASSOC_FAIL: return "ASSOC_FAIL";
-    case WIFI_REASON_HANDSHAKE_TIMEOUT: return "HANDSHAKE_TIMEOUT";
-    case WIFI_REASON_ROAMING: return "ROAMING";
-    case WIFI_REASON_STA_LEAVE: return "STA_LEAVE";
-    case WIFI_REASON_STA_AP_TOO_FAR: return "STA_AP_TOO_FAR";
-    case WIFI_REASON_CSI_UNSPECIFIED: return "CSI_UNSPECIFIED";
-    case WIFI_REASON_BSS_TRANSITION_DISASSOC: return "BSS_TRANSITION_DISASSOC";
-    case WIFI_REASON_UNKNOWN: return "UNKNOWN";
-    case WIFI_REASON_NOT_FOUND: return "NOT_FOUND";
-    case WIFI_REASON_AUTH_FAIL: return "AUTH_FAIL";
-    case WIFI_REASON_ASSOC_LEAVE_IP: return "ASSOC_LEAVE_IP";
-    case WIFI_REASON_ASSOC_NO_IP: return "ASSOC_NO_IP";
-    case WIFI_REASON_ABANDONED: return "ABANDONED";
-    case WIFI_REASON_NO_AP_FOUND: return "NO_AP_FOUND";
-    case WIFI_REASON_ASSOC_BSS_BAND: return "ASSOC_BSS_BAND";
-    case WIFI_REASON_AP_STA_LIMIT: return "AP_STA_LIMIT";
-    case WIFI_REASON_HANDSHAKE_BY_AP_TIMEOUT: return "HANDSHAKE_BY_AP_TIMEOUT";
-    default: return "DESCONOCIDA";
-  }
-}
+const unsigned long WIFI_STATUS_INTERVAL = 10000; // 10 segundos
 
 void setup() {
   Serial.begin(115200);
@@ -192,15 +153,23 @@ void setup() {
   ledcAttachPin(SERVO4_PIN, SERVO4_CHANNEL);
   openFrontGate();
 
-  // Configuración de IP Fija
-  if (!WiFi.config(local_IP, gateway, subnet)) {
-    telnetPrintln("Falló la configuración de IP estática");
-  }
-
-  // Conexión WiFi inicial (no bloqueante)
+  // Conexión WiFi inicial (siempre dinámica)
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  telnetPrintln("Intentando conectar a WiFi...");
+  telnetPrintln("Intentando conectar a WiFi con IP dinámica (DHCP)...");
+
+  // Esperar hasta conectar o agotar intentos (máx 10s)
+  int wifi_attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && wifi_attempts < 20) {
+    delay(1000);
+    Serial.print(".");
+    wifi_attempts++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    telnetPrintln("WiFi conectado en setup. IP: " + WiFi.localIP().toString());
+  } else {
+    telnetPrintln("No se pudo conectar a WiFi en setup. Estado: " + String(WiFi.status()));
+  }
 
   // Servidor web
   server.on("/command", HTTP_POST, handleCommand);
@@ -242,9 +211,7 @@ void checkWiFiConnection() {
     unsigned long currentMillis = millis();
     if (currentMillis - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
       telnetPrint("WiFi desconectado. Estado: ");
-      telnetPrint(String(WiFi.status()));
-      telnetPrint(", Razón: ");
-      telnetPrintln(getWiFiDisconnectReason(WiFi.reason()));
+      telnetPrintln(String(WiFi.status()));  
       lastWiFiStatusPrint = currentMillis;
     }
     // No bloquear, solo intentar reconectar
