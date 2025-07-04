@@ -6,6 +6,12 @@
 const char* ssid = "snowden";
 const char* password = "qwertyasdfghzxcvb54321";
 
+// Configuración de IP Fija
+IPAddress local_IP(192, 168, 0, 115);
+IPAddress gateway(192, 168, 0, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress primaryDNS(192, 168, 0, 1);
+
 // Pines del L298N original (desplazamiento)
 #define IN1  23  // Motor A
 #define IN2  22
@@ -56,6 +62,11 @@ const char* password = "qwertyasdfghzxcvb54321";
 
 WebServer server(80);
 
+// Servidor Telnet para depuración
+const int TELNET_PORT = 23; // Puerto estándar de Telnet
+WiFiServer telnetServer(TELNET_PORT);
+WiFiClient telnetClient;
+
 // No se necesitan objetos Servo de la librería ESP32Servo.h
 
 // Estado del sistema
@@ -85,6 +96,14 @@ void openFrontGate();
 void closeFrontGate();
 void processTimers();
 void writeServoAngle(int pin, int channel, int angle);
+void checkWiFiConnection();
+void telnetPrintln(const String& msg);
+void telnetPrint(const String& msg);
+
+// Temporizador para mensajes de WiFi
+unsigned long lastWiFiStatusPrint = 0;
+const unsigned long WIFI_STATUS_INTERVAL = 10000; // 10 segundos
+bool isWiFiReconnecting = false;
 
 void setup() {
   Serial.begin(115200);
@@ -129,24 +148,96 @@ void setup() {
   ledcAttachPin(SERVO4_PIN, SERVO4_CHANNEL);
   openFrontGate();
 
-  // Conexión WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Conectando a WiFi...");
+  // Configurar la dirección IP estática
+  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS)) {
+    Serial.println("Error al configurar STA Mode con IP estática.");
   }
-  Serial.println("WiFi conectado");
-  Serial.print("IP: ");
-  Serial.println(WiFi.localIP());
+
+  // Conexión WiFi inicial
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.print("Conectando a WiFi...");
+
+  // Esperar hasta conectar o agotar intentos
+  int wifi_attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && wifi_attempts < 20) {
+    delay(1000);
+    Serial.print(".");
+    wifi_attempts++;
+  }
+  Serial.println("");
+  if (WiFi.status() == WL_CONNECTED) {    
+    Serial.print("WiFi inicializado correctamente. Conectado a ");
+    Serial.println(ssid);
+    Serial.print("Dirección IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Intensidad de señal: ");
+    Serial.println(100 + WiFi.RSSI());
+  } else {
+    Serial.print("No se pudo conectar a WiFi en el inicio. Estado: ");
+    Serial.println(WiFi.status());
+  }
 
   // Servidor web
   server.on("/command", HTTP_POST, handleCommand);
   server.begin();
+
+  // Iniciar servidor Telnet
+  telnetServer.begin();
+  telnetServer.setNoDelay(true);
 }
 
 void loop() {
   server.handleClient();
   processTimers();
+  checkWiFiConnection();
+
+  // Manejar nuevas conexiones Telnet
+  if (!telnetClient || !telnetClient.connected()) {
+    if (telnetClient) {
+      telnetClient.stop();
+    }
+    telnetClient = telnetServer.available();
+    if (telnetClient) {
+      Serial.println("Cliente Telnet conectado");
+      telnetClient.println("Bienvenido al depurador Telnet del EcoBot!");
+    }
+  }
+
+  // Leer datos del cliente Telnet (opcional, para comandos futuros)
+  if (telnetClient && telnetClient.connected() && telnetClient.available()) {
+    while (telnetClient.available()) {
+      char c = telnetClient.read();
+      // Puedes procesar comandos recibidos por Telnet aquí si es necesario
+      Serial.write(c);
+    }
+  }
+}
+
+void checkWiFiConnection() {
+  if (WiFi.status() != WL_CONNECTED) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
+      telnetPrint("WiFi desconectado. Estado: ");
+      telnetPrintln(String(WiFi.status())); 
+      lastWiFiStatusPrint = currentMillis;
+    }
+    // Intentar reconectar
+    isWiFiReconnecting = true;
+    WiFi.disconnect();
+    WiFi.reconnect();
+    delay(500);
+  } else {
+    // Opcional: Imprimir IP si acaba de conectar o si no se ha impreso en mucho tiempo
+    if (lastWiFiStatusPrint == 0 || isWiFiReconnecting || millis() - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
+      telnetPrint("WiFi sigue conectado. IP: ");
+      telnetPrintln(WiFi.localIP().toString());
+      telnetPrint("Intensidad de señal: ");
+      telnetPrintln(String(100 + WiFi.RSSI()));
+      isWiFiReconnecting = false;
+      lastWiFiStatusPrint = millis();
+    }
+  }
 }
 
 void handleCommand() {
@@ -158,7 +249,8 @@ void handleCommand() {
       return;
     }
     String command = doc["command"];
-    Serial.println("Comando recibido: " + command);
+    telnetPrintln("Comando recibido: " + command);
+
 
     // Ignorar comandos durante compactación
     if (systemState == COMPACTING) {
@@ -379,5 +471,19 @@ void processTimers() {
         }
         break;
     }
+  }
+}
+
+void telnetPrintln(const String& msg) {
+  Serial.println(msg);
+  if (telnetClient && telnetClient.connected()) {
+    telnetClient.println(msg);
+  }
+}
+
+void telnetPrint(const String& msg) {
+  Serial.print(msg);
+  if (telnetClient && telnetClient.connected()) {
+    telnetClient.print(msg);
   }
 }
