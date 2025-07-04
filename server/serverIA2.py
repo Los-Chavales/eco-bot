@@ -37,20 +37,21 @@ class WasteDetectionSystem:
 
         logging.info("Sistema inicializado correctamente")
 
-    def connect_to_video_stream(self):
+    async def connect_to_video_stream(self):
         try:
-            self.cap = cv2.VideoCapture(self.video_url)
-            if not self.cap.isOpened():
+            # cv2.VideoCapture can be blocking, run in a separate thread
+            self.cap = await asyncio.to_thread(cv2.VideoCapture, self.video_url)
+            if not await asyncio.to_thread(self.cap.isOpened):
                 raise Exception("No se pudo conectar al stream de video")
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
-            print(f"Conectado al stream de video: {self.video_url}")
+            await asyncio.to_thread(self.cap.set, cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
+            await asyncio.to_thread(self.cap.set, cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
+            logging.info(f"Conectado al stream de video: {self.video_url}")
             return True
         except Exception as e:
             logging.error(f"Error conectando al video: {e}")
             return False
 
-    def send_command_to_esp32(self, command):
+    async def send_command_to_esp32(self, command):
         if self._last_command == command:
             return
         if command not in self.VALID_COMMANDS:
@@ -59,7 +60,8 @@ class WasteDetectionSystem:
         logging.info(f"Comando enviado: {command}")
         try:
             payload = {"command": command, "timestamp": datetime.now().isoformat()}
-            response = requests.post(self.esp32_command_url, json=payload, timeout=2)
+            # requests.post is blocking, run in a separate thread
+            response = await asyncio.to_thread(requests.post, self.esp32_command_url, json=payload, timeout=2)
             if response.status_code == 200:
                 logging.info(f"Comando {command} enviado correctamente")
             else:
@@ -132,8 +134,8 @@ class WasteDetectionSystem:
         cv2.line(frame, (0, h - 100), (w, h - 100), (255, 0, 0), 1)
         return frame
 
-    def run(self):
-        if not self.connect_to_video_stream():
+    async def run(self):
+        if not await self.connect_to_video_stream():
             return
         self.running = True
         logging.info("Iniciando detección de desechos...")
@@ -142,7 +144,7 @@ class WasteDetectionSystem:
             last_command_time = 0
             command_interval = 1.0  # segundos entre comandos
             while self.running:
-                ret, frame = self.cap.read()
+                ret, frame = await asyncio.to_thread(self.cap.read)
                 if not ret:
                     logging.error("Error leyendo frame")
                     break
@@ -150,30 +152,29 @@ class WasteDetectionSystem:
                 command = self.calculate_movement_command(detections)
                 current_time = time.time()
                 if current_time - last_command_time > command_interval:
-                    self.send_command_to_esp32(command)
+                    await self.send_command_to_esp32(command)
                     last_command_time = current_time
 
                 frame_with_detections = self.draw_detections(frame.copy(), detections)
-                cv2.imshow('Robot Waste Detection', frame_with_detections)
+                await asyncio.to_thread(cv2.imshow, 'Robot Waste Detection', frame_with_detections)
 
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                if await asyncio.to_thread(cv2.waitKey, 1) & 0xFF == ord('q'):
                     break
-                time.sleep(0.05)
         except KeyboardInterrupt:
             logging.info("Deteniendo sistema...")
         finally:
-            self.stop()
+            await self.stop()
 
-    def stop(self):
+    async def stop(self):
         self.running = False
         if hasattr(self, 'cap'):
-            self.cap.release()
+            await asyncio.to_thread(self.cap.release)
         try:
-            cv2.destroyAllWindows()
+            await asyncio.to_thread(cv2.destroyAllWindows)
         except Exception as e:
-            print(f"Error cerrando ventanas de OpenCV: {e}")
-        self.send_command_to_esp32("STOP")
-        print("Sistema detenido")
+            logging.error(f"Error cerrando ventanas de OpenCV: {e}")
+        await self.send_command_to_esp32("STOP")
+        logging.info("Sistema detenido")
 
 def main():
     PHONE_IP = "192.168.0.120"
@@ -184,8 +185,8 @@ def main():
         esp32_ip=ESP32_IP,
         esp32_port=80
     )
-    print("Presiona 'q' para salir")
-    waste_detector.run()
+    logging.info("Presiona 'q' para salir")
+    asyncio.run(waste_detector.run())
 
 if __name__ == "__main__":
     main()
