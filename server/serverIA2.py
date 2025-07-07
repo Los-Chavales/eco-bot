@@ -28,8 +28,10 @@ class WasteDetectionSystem:
         logging.info(f"Modelo YOLO cargado. Clases: {self.model.names}")
 
         self.confidence_threshold = 0.3
-        self.frame_width = 640
-        self.frame_height = 480
+        
+        # --- MODIFICACIÓN: Cambiar la resolución a 352x288 ---
+        self.frame_width = 352
+        self.frame_height = 288
 
         self.detection_history = deque(maxlen=5)
         self.running = False
@@ -70,8 +72,11 @@ class WasteDetectionSystem:
             logging.error(f"Error comunicando con ESP32: {e}")
 
     def detect_waste(self, frame):
+        # Esta validación asegura que cualquier frame, sin importar su origen, se redimensione
+        # a la resolución de procesamiento definida, manteniendo la consistencia.
         if frame.shape[1] != self.frame_width or frame.shape[0] != self.frame_height:
             frame = cv2.resize(frame, (self.frame_width, self.frame_height))
+            
         results = self.model(frame, conf=self.confidence_threshold)
         detections = []
         for result in results:
@@ -111,8 +116,14 @@ class WasteDetectionSystem:
         )
         cx, cy = best_detection['center_x'], best_detection['center_y']
         frame_center_x = self.frame_width // 2
-        tolerance_x = 50
-        tolerance_y = 100
+
+        # --- MODIFICACIÓN: Ajustar tolerancias para la nueva resolución ---
+        # Los valores originales (50, 100) eran para 640x480.
+        # Se escalan para 352x288. Por ejemplo: 50 * (352/640) ~= 27.5
+        tolerance_x = 30 
+        # Por ejemplo: 100 * (288/480) = 60
+        tolerance_y = 60
+        
         if cy > self.frame_height - tolerance_y:
             return "COLLECT"
         if cx < frame_center_x - tolerance_x:
@@ -129,9 +140,18 @@ class WasteDetectionSystem:
             label = f"{detection['class_name']}: {detection['confidence']:.2f}"
             cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             cv2.circle(frame, (detection['center_x'], detection['center_y']), 5, (0, 0, 255), -1)
+        
         h, w = frame.shape[:2]
+        
+        # Dibuja la línea central vertical
         cv2.line(frame, (w // 2, 0), (w // 2, h), (255, 0, 0), 1)
-        cv2.line(frame, (0, h - 100), (w, h - 100), (255, 0, 0), 1)
+
+        # --- MODIFICACIÓN: Ajustar la línea de recolección visual ---
+        # El valor original era 100 para una altura de 480.
+        # Lo ajustamos para que coincida con la nueva 'tolerance_y'.
+        collection_line_y = h - 60
+        cv2.line(frame, (0, collection_line_y), (w, collection_line_y), (255, 0, 0), 1)
+        
         return frame
 
     async def run(self):
@@ -148,8 +168,10 @@ class WasteDetectionSystem:
                 if not ret:
                     logging.error("Error leyendo frame")
                     break
+                
                 detections = self.detect_waste(frame)
                 command = self.calculate_movement_command(detections)
+                
                 current_time = time.time()
                 if current_time - last_command_time > command_interval:
                     await self.send_command_to_esp32(command)
