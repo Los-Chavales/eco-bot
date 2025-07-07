@@ -12,14 +12,6 @@ IPAddress gateway(192, 168, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress primaryDNS(192, 168, 0, 1);
 
-// Pines del L298N original (desplazamiento)
-#define IN1  23  // Motor A
-#define IN2  22
-#define IN3  17  // Motor B
-#define IN4  16
-#define ENA  21  // PWM Motor A
-#define ENB  4  // PWM Motor B
-
 // Pines del nuevo L298N (compactador/recolección)
 #define NEW_IN1  25   // Motor A (compactador)
 #define NEW_IN2  26
@@ -34,20 +26,13 @@ IPAddress primaryDNS(192, 168, 0, 1);
 #define SERVO3_PIN 5
 #define SERVO4_PIN 13 // Nuevo servo MG996R
 
-// PWM
-#define PWM_FREQ     1000
-#define PWM_CHANNEL_A 0
-#define PWM_CHANNEL_B 1
-#define PWM_RESOLUTION 8
-#define MOTOR_SPEED 130  // 0-255
-
 // PWM para nuevo L298N
 #define NEW_PWM_FREQ     1000
-#define NEW_PWM_CHANNEL_A 2
-#define NEW_PWM_CHANNEL_B 3
+#define NEW_PWM_CHANNEL_A 0
+#define NEW_PWM_CHANNEL_B 1
 #define NEW_PWM_RESOLUTION 8
 #define COLLECTOR_SPEED 255      // 100% para recolección
-#define COMPACTOR_SPEED 191      // 75% para compactador (255*0.75)
+#define COMPACTOR_SPEED 255      // 75% para compactador (255*0.75)
 
 // PWM para Servos
 #define SERVO_PWM_FREQ 50       // Frecuencia de 50Hz para servos
@@ -55,10 +40,10 @@ IPAddress primaryDNS(192, 168, 0, 1);
 #define SERVO_MIN_PULSE_US 500  // 500us para 0 grados
 #define SERVO_MAX_PULSE_US 2500 // 2500us para 180 grados
 
-#define SERVO1_CHANNEL 4
-#define SERVO2_CHANNEL 5
-#define SERVO3_CHANNEL 6
-#define SERVO4_CHANNEL 7 // Canal para el nuevo servo
+#define SERVO1_CHANNEL 3
+#define SERVO2_CHANNEL 4
+#define SERVO3_CHANNEL 5
+#define SERVO4_CHANNEL 2 // Canal para el nuevo servo
 
 WebServer server(80);
 
@@ -67,7 +52,9 @@ const int TELNET_PORT = 23; // Puerto estándar de Telnet
 WiFiServer telnetServer(TELNET_PORT);
 WiFiClient telnetClient;
 
-// No se necesitan objetos Servo de la librería ESP32Servo.h
+// Serial2: TX2=GPIO17 → RX del Nano, RX2=GPIO16 ← TX del Nano
+#define RX2 16
+#define TX2 17
 
 // Estado del sistema
 enum SystemState {
@@ -86,9 +73,9 @@ const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de re
 
 // Tiempos del proceso de compactación
 const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
-const unsigned long COMPACTOR_FORWARD_DURATION = 4000; // 4s motor compactador hacia adelante
-const unsigned long COMPACTOR_WAIT_DURATION = 3000;    // 3s de espera entre movimientos del compactador
-const unsigned long COMPACTOR_BACKWARD_DURATION = 4000; // 4s motor compactador hacia atrás
+const unsigned long COMPACTOR_FORWARD_DURATION = 1500; // 4s motor compactador hacia adelante
+const unsigned long COMPACTOR_WAIT_DURATION = 500;    // 3s de espera entre movimientos del compactador
+const unsigned long COMPACTOR_BACKWARD_DURATION = 1600; // 4s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
 
 // Temporizador recolección
@@ -119,18 +106,7 @@ bool isWiFiReconnecting = false;
 
 void setup() {
   Serial.begin(115200);
-
-  // Configurar pines de motores
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
-
-  // PWM para velocidad de motores
-  ledcSetup(PWM_CHANNEL_A, PWM_FREQ, PWM_RESOLUTION);
-  ledcSetup(PWM_CHANNEL_B, PWM_FREQ, PWM_RESOLUTION);
-  ledcAttachPin(ENA, PWM_CHANNEL_A);
-  ledcAttachPin(ENB, PWM_CHANNEL_B);
+  Serial2.begin(9600, SERIAL_8N1, RX2, TX2);
 
   // Configurar pines del nuevo L298N
   pinMode(NEW_IN1, OUTPUT);
@@ -138,7 +114,7 @@ void setup() {
   pinMode(NEW_IN3, OUTPUT);
   pinMode(NEW_IN4, OUTPUT);
 
-  // PWM para nuevo L298N
+  // PWM para velocidad de motores del nuevo L298N
   ledcSetup(NEW_PWM_CHANNEL_A, NEW_PWM_FREQ, NEW_PWM_RESOLUTION);
   ledcSetup(NEW_PWM_CHANNEL_B, NEW_PWM_FREQ, NEW_PWM_RESOLUTION);
   ledcAttachPin(NEW_ENA, NEW_PWM_CHANNEL_A);
@@ -326,39 +302,19 @@ void executeMovement(String command) {
 
 // Funciones de movimiento
 void stopMotors() {
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, LOW);
-  ledcWrite(PWM_CHANNEL_A, 0);
-  ledcWrite(PWM_CHANNEL_B, 0);
+  Serial2.write("S");
 }
 
 void moveForward() {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-  ledcWrite(PWM_CHANNEL_A, MOTOR_SPEED);
-  ledcWrite(PWM_CHANNEL_B, MOTOR_SPEED);
+  Serial2.write("F");
 }
 
 void turnLeft() {
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, HIGH);
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-  ledcWrite(PWM_CHANNEL_A, MOTOR_SPEED);
-  ledcWrite(PWM_CHANNEL_B, MOTOR_SPEED);
+  Serial2.write("L");
 }
 
 void turnRight() {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, HIGH);
-  ledcWrite(PWM_CHANNEL_A, MOTOR_SPEED);
-  ledcWrite(PWM_CHANNEL_B, MOTOR_SPEED);
+  Serial2.write("R");
 }
 
 // Motor de recolección (motor B del nuevo L298N)
