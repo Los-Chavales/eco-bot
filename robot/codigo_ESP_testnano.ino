@@ -51,7 +51,7 @@ void loop() {
     }
   }
 
-  // Si hay un cliente conectado, leer comandos
+  // Si hay un cliente conectado, leer comandos por Telnet
   if (telnetClient && telnetClient.connected() && telnetClient.available()) {
     char cmd = telnetClient.read();
     // Solo aceptar letras válidas
@@ -64,6 +64,19 @@ void loop() {
     } else if (cmd >= 32 && cmd <= 126) {
       telnetClient.print("Comando inválido: ");
       telnetClient.println(cmd);
+    }
+  }
+
+  // Leer comandos desde Serial USB (PC)
+  if (Serial.available()) {
+    char cmd = Serial.read();
+    if (strchr("FBLRSfblrs", cmd)) {
+      Serial2.write(cmd);
+      Serial.print("Enviado desde Serial: ");
+      Serial.println(cmd);
+    } else if (cmd >= 32 && cmd <= 126) {
+      Serial.print("Comando inválido desde Serial: ");
+      Serial.println(cmd);
     }
   }
 
