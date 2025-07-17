@@ -12,6 +12,9 @@ WiFiClient telnetClient;
 #define RX2 16
 #define TX2 17
 
+// Valores por defecto de velocidad
+#define SPEED_DEFAULT 128
+
 void setup() {
   Serial.begin(115200);
   Serial2.begin(9600, SERIAL_8N1, RX2, TX2);
@@ -42,7 +45,8 @@ void loop() {
       if (telnetClient) telnetClient.stop();
       telnetClient = telnetServer.available();
       telnetClient.println("Bienvenido al robot por Telnet!");
-      telnetClient.println("Comandos: F,B,L,R,S (mayúscula=50%, minúscula=100%)");
+      telnetClient.println("Comandos: F,B,L,R,S + [velocidad opcional 0-255] (ej: F200)");
+      telnetClient.println("E1=activar evasión, E0=desactivar evasión");
     } else {
       // Rechazar conexiones adicionales
       WiFiClient newClient = telnetServer.available();
@@ -53,34 +57,63 @@ void loop() {
 
   // Si hay un cliente conectado, leer comandos por Telnet
   if (telnetClient && telnetClient.connected() && telnetClient.available()) {
-    char cmd = telnetClient.read();
-    // Solo aceptar letras válidas
-    if (strchr("FBLRSfblrs", cmd)) {
-      Serial2.write(cmd);
-      telnetClient.print("Enviado: ");
-      telnetClient.println(cmd);
-      Serial.print("Comando Telnet: ");
-      Serial.println(cmd);
-    } else if (cmd >= 32 && cmd <= 126) {
-      telnetClient.print("Comando inválido: ");
-      telnetClient.println(cmd);
+    String input = telnetClient.readStringUntil('\n');
+    input.trim();
+    if (input.length() > 0) {
+      char cmd = toupper(input[0]);
+      uint8_t speed = SPEED_DEFAULT;
+      if (cmd == 'E') {
+        // Activar/desactivar evasión de obstáculos
+        uint8_t enable = (input.length() > 1 && input[1] == '1') ? 1 : 0;
+        Serial2.write('E');
+        Serial2.write(enable);
+        telnetClient.printf("Evasion de obstaculos: %s\n", enable ? "ACTIVADA" : "DESACTIVADA");
+        Serial.printf("Comando Telnet: E%d\n", enable);
+      } else if (strchr("FBLRS", cmd)) {
+        // Leer velocidad si se especifica
+        if (input.length() > 1) {
+          int v = input.substring(1).toInt();
+          if (v >= 0 && v <= 255) speed = v;
+        }
+        Serial2.write(cmd);
+        Serial2.write(speed);
+        telnetClient.printf("Enviado: %c %d\n", cmd, speed);
+        Serial.printf("Comando Telnet: %c %d\n", cmd, speed);
+      } else {
+        telnetClient.print("Comando inválido: ");
+        telnetClient.println(input);
+      }
     }
   }
 
   // Leer comandos desde Serial USB (PC)
   if (Serial.available()) {
-    char cmd = Serial.read();
-    if (strchr("FBLRSfblrs", cmd)) {
-      Serial2.write(cmd);
-      Serial.print("Enviado desde Serial: ");
-      Serial.println(cmd);
-    } else if (cmd >= 32 && cmd <= 126) {
-      Serial.print("Comando inválido desde Serial: ");
-      Serial.println(cmd);
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    if (input.length() > 0) {
+      char cmd = toupper(input[0]);
+      uint8_t speed = SPEED_DEFAULT;
+      if (cmd == 'E') {
+        uint8_t enable = (input.length() > 1 && input[1] == '1') ? 1 : 0;
+        Serial2.write('E');
+        Serial2.write(enable);
+        Serial.printf("Enviado desde Serial: E%d\n", enable);
+      } else if (strchr("FBLRS", cmd)) {
+        if (input.length() > 1) {
+          int v = input.substring(1).toInt();
+          if (v >= 0 && v <= 255) speed = v;
+        }
+        Serial2.write(cmd);
+        Serial2.write(speed);
+        Serial.printf("Enviado desde Serial: %c %d\n", cmd, speed);
+      } else {
+        Serial.print("Comando inválido desde Serial: ");
+        Serial.println(input);
+      }
     }
   }
 
-  // (Opcional) Mostrar datos del Nano hacia el cliente Telnet
+  // Mostrar datos del Nano hacia el cliente Telnet
   if (Serial2.available() && telnetClient && telnetClient.connected()) {
     char c = Serial2.read();
     telnetClient.write(c);
