@@ -39,8 +39,37 @@ void setup() {
 }
 
 String nanoLine = "";
+unsigned long lastRssiReport = 0; // Para controlar el envío periódico de RSSI
 
 void loop() {
+  // Reconexión Wi-Fi automática
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi desconectado. Intentando reconectar...");
+    WiFi.disconnect();
+    WiFi.reconnect();
+    unsigned long startAttemptTime = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+      delay(1000);
+      Serial.print(".");
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nReconectado a WiFi!");
+      Serial.print("IP: ");
+      Serial.println(WiFi.localIP());
+    } else {
+      Serial.println("\nNo se pudo reconectar a WiFi.");
+    }
+  }
+
+  // Reportar intensidad de señal Wi-Fi cada 5 segundos
+  if (millis() - lastRssiReport > 5000) {
+    lastRssiReport = millis();
+    int rssi = WiFi.RSSI();
+    Serial.print("[WiFi] Intensidad de señal (RSSI): ");
+    Serial.print(rssi);
+    Serial.println(" dBm");
+  }
+
   // Aceptar nuevas conexiones Telnet
   if (telnetServer.hasClient()) {
     if (!telnetClient || !telnetClient.connected()) {
