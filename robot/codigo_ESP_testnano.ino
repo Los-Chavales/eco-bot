@@ -12,12 +12,18 @@ WiFiClient telnetClient;
 #define RX2 16
 #define TX2 17
 
+// LED integrado
+#define LED_BUILTIN 2 
+
 // Valores por defecto de velocidad
 #define SPEED_DEFAULT 128
 
 void setup() {
   Serial.begin(115200);
   Serial2.begin(9600, SERIAL_8N1, RX2, TX2);
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
 
   // Conectar a WiFi
   WiFi.mode(WIFI_STA);
@@ -31,6 +37,7 @@ void setup() {
   Serial.println("\nConectado!");
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
+  digitalWrite(LED_BUILTIN, LOW);
 
   // Iniciar Telnet
   telnetServer.begin();
@@ -45,6 +52,7 @@ void loop() {
   // Reconexión Wi-Fi automática
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi desconectado. Intentando reconectar...");
+    digitalWrite(LED_BUILTIN, HIGH);
     WiFi.disconnect();
     WiFi.reconnect();
     unsigned long startAttemptTime = millis();
@@ -56,6 +64,7 @@ void loop() {
       Serial.println("\nReconectado a WiFi!");
       Serial.print("IP: ");
       Serial.println(WiFi.localIP());
+      digitalWrite(LED_BUILTIN, LOW);
     } else {
       Serial.println("\nNo se pudo reconectar a WiFi.");
     }
