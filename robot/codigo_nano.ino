@@ -18,6 +18,9 @@
 // --- Variables ---
 bool obstacle_avoidance_enabled = false; // Activado por defecto
 
+unsigned long lastDistanceSent = 0;
+const unsigned long DISTANCE_SEND_INTERVAL = 200; // ms
+
 void setup() {
   // Motores
   pinMode(M1_IN1, OUTPUT); pinMode(M1_IN2, OUTPUT); pinMode(M1_ENA, OUTPUT);
@@ -38,6 +41,15 @@ void loop() {
     return;
   }
 
+  // Enviar distancia periódicamente al ESP32
+  unsigned long now = millis();
+  if (now - lastDistanceSent >= DISTANCE_SEND_INTERVAL) {
+    float dist = measureDistance();
+    Serial.print("D:");
+    Serial.println(dist, 1); // Un decimal de precisión
+    lastDistanceSent = now;
+  }
+
   // Leer comando desde ESP32
   if (Serial.available() >= 2) {
     char cmd = Serial.read();
@@ -45,10 +57,25 @@ void loop() {
 
     if (cmd == 'E') {
       obstacle_avoidance_enabled = speed ? true : false;
+      Serial.print("Evasion de obstaculos: ");
+      Serial.println(obstacle_avoidance_enabled ? "ACTIVADA" : "DESACTIVADA");
+      return;
+    }
+    
+    if (speed < 0 || speed > 255) {
+      Serial.println("Velocidad no válida. Debe ser entre 0 y 255.");
       return;
     }
 
     processCommand(cmd, speed);
+    if (cmd == 'S') {
+      Serial.println("Motores detenidos.");
+    } else {
+      Serial.print("Comando recibido: ");
+      Serial.print(cmd);
+      Serial.print(" con velocidad: ");
+      Serial.println(speed);
+    }
   }
 }
 
@@ -99,6 +126,12 @@ void setMotor(int in1, int in2, int ena, bool forward, uint8_t vel) {
 
 // --- Sensor ultrasónico ---
 bool detectObstacle(float limit_cm) {
+  float distance_cm = measureDistance();
+  return (distance_cm > 0 && distance_cm <= limit_cm);
+}
+
+// Nueva función para medir distancia
+float measureDistance() {
   long duration;
   float distance_cm;
 
@@ -111,7 +144,7 @@ bool detectObstacle(float limit_cm) {
   duration = pulseIn(ECHO_PIN, HIGH, 25000); // Timeout ~4.3m
   distance_cm = duration * 0.034 / 2;
 
-  return (distance_cm > 0 && distance_cm <= limit_cm);
+  return distance_cm;
 }
 
 // --- Algoritmo de esquivar obstáculo ---

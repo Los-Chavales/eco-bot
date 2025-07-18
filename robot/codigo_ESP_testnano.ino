@@ -38,6 +38,8 @@ void setup() {
   Serial.println("Servidor Telnet iniciado. Puerto 23");
 }
 
+String nanoLine = "";
+
 void loop() {
   // Aceptar nuevas conexiones Telnet
   if (telnetServer.hasClient()) {
@@ -113,9 +115,28 @@ void loop() {
     }
   }
 
-  // Mostrar datos del Nano hacia el cliente Telnet
-  if (Serial2.available() && telnetClient && telnetClient.connected()) {
+  // Mostrar datos del Nano hacia el cliente Telnet y Serial PC
+  while (Serial2.available()) {
     char c = Serial2.read();
-    telnetClient.write(c);
+    if (c == '\n' || c == '\r') {
+      if (nanoLine.startsWith("D:")) {
+        // Mensaje de distancia
+        if (telnetClient && telnetClient.connected()) {
+          telnetClient.print("[Nano] ");
+          telnetClient.println(nanoLine);
+        }
+        Serial.print("[Nano] ");
+        Serial.println(nanoLine);
+      } else if (nanoLine.length() > 0) {
+        // Otros mensajes del Nano
+        if (telnetClient && telnetClient.connected()) {
+          telnetClient.println(nanoLine);
+        }
+        Serial.println(nanoLine);
+      }
+      nanoLine = "";
+    } else {
+      nanoLine += c;
+    }
   }
 }
