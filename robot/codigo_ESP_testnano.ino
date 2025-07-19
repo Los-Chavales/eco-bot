@@ -188,7 +188,8 @@ void loop() {
   // Enviar mensajes en cola a Telnet si han pasado 2 segundos sin entrada por Telnet
   if (telnetClient && telnetClient.connected() && telnetMessageQueue.length() > 0 &&
       (millis() - lastTelnetInputTime > 2000)) {
-    telnetClient.print(telnetMessageQueue);
-    telnetMessageQueue = "";
+    telnetClient.print(telnetMessageQueue); // Enviar toda la cola acumulada
+    telnetClient.flush(); // Asegurar envío completo
+    telnetMessageQueue = ""; // Limpiar cola después de enviar
   }
 }
