@@ -16,10 +16,10 @@
 #define OBSTACLE_AVOID_TIME 600     // ms para avanzar/retroceder/girar en evitado
 
 // --- Variables ---
-bool obstacle_avoidance_enabled = false; // Activado por defecto
+bool obstacle_avoidance_enabled = true; // Activado por defecto
 
 unsigned long lastDistanceSent = 0;
-const unsigned long DISTANCE_SEND_INTERVAL = 200; // ms
+const unsigned long DISTANCE_SEND_INTERVAL = 500; // ms
 
 void setup() {
   // Motores
@@ -154,15 +154,15 @@ void avoidObstacle() {
   delay(1250);
 
   // 2. Retroceder
-  moveBackward(90);
+  moveBackward(80);
   delay(OBSTACLE_AVOID_TIME);
 
   // 3. Girar derecha
-  turnRight(95);
+  turnRight(85);
   delay(OBSTACLE_AVOID_TIME);
 
   // 4. Avanzar
-  moveForward(80);
+  moveForward(65);
   delay(OBSTACLE_AVOID_TIME);
 
   // 5. Detenerse y esperar

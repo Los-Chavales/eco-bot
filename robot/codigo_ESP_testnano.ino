@@ -15,8 +15,8 @@ WiFiClient telnetClient;
 // LED integrado
 #define LED_BUILTIN 2 
 
-// Valores por defecto de velocidad
-#define SPEED_DEFAULT 128
+unsigned long lastTelnetInputTime = 0;
+String telnetMessageQueue = "";
 
 void setup() {
   Serial.begin(115200);
@@ -46,6 +46,7 @@ void setup() {
 }
 
 String nanoLine = "";
+unsigned long lastNanoData = millis();
 unsigned long lastRssiReport = 0; // Para controlar el envío periódico de RSSI
 
 void loop() {
@@ -95,13 +96,13 @@ void loop() {
     }
   }
 
-  // Si hay un cliente conectado, leer comandos por Telnet
+  // Procesar comandos recibidos por Telnet
   if (telnetClient && telnetClient.connected() && telnetClient.available()) {
+    lastTelnetInputTime = millis();
     String input = telnetClient.readStringUntil('\n');
     input.trim();
     if (input.length() > 0) {
       char cmd = toupper(input[0]);
-      uint8_t speed = SPEED_DEFAULT;
       if (cmd == 'E') {
         // Activar/desactivar evasión de obstáculos
         uint8_t enable = (input.length() > 1 && input[1] == '1') ? 1 : 0;
@@ -110,15 +111,20 @@ void loop() {
         telnetClient.printf("Evasion de obstaculos: %s\n", enable ? "ACTIVADA" : "DESACTIVADA");
         Serial.printf("Comando Telnet: E%d\n", enable);
       } else if (strchr("FBLRS", cmd)) {
-        // Leer velocidad si se especifica
-        if (input.length() > 1) {
+        if (input.length() <= 1) {
+          telnetClient.println("Comando inválido: velocidad requerida");
+        } else {
           int v = input.substring(1).toInt();
-          if (v >= 0 && v <= 255) speed = v;
+          if (v < 0 || v > 255) {
+            telnetClient.println("Comando inválido: velocidad fuera de rango (0-255)");
+          } else {
+            uint8_t speed = v;
+            Serial2.write(cmd);
+            Serial2.write(speed);
+            telnetClient.printf("Enviado: %c %d\n", cmd, speed);
+            Serial.printf("Comando Telnet: %c %d\n", cmd, speed);
+          }
         }
-        Serial2.write(cmd);
-        Serial2.write(speed);
-        telnetClient.printf("Enviado: %c %d\n", cmd, speed);
-        Serial.printf("Comando Telnet: %c %d\n", cmd, speed);
       } else {
         telnetClient.print("Comando inválido: ");
         telnetClient.println(input);
@@ -132,20 +138,25 @@ void loop() {
     input.trim();
     if (input.length() > 0) {
       char cmd = toupper(input[0]);
-      uint8_t speed = SPEED_DEFAULT;
       if (cmd == 'E') {
         uint8_t enable = (input.length() > 1 && input[1] == '1') ? 1 : 0;
         Serial2.write('E');
         Serial2.write(enable);
         Serial.printf("Enviado desde Serial: E%d\n", enable);
       } else if (strchr("FBLRS", cmd)) {
-        if (input.length() > 1) {
+        if (input.length() <= 1) {
+          Serial.println("Comando inválido desde Serial: velocidad requerida");
+        } else {
           int v = input.substring(1).toInt();
-          if (v >= 0 && v <= 255) speed = v;
+          if (v < 0 || v > 255) {
+            Serial.println("Comando inválido desde Serial: velocidad fuera de rango (0-255)");
+          } else {
+            uint8_t speed = v;
+            Serial2.write(cmd);
+            Serial2.write(speed);
+            Serial.printf("Enviado desde Serial: %c %d\n", cmd, speed);
+          }
         }
-        Serial2.write(cmd);
-        Serial2.write(speed);
-        Serial.printf("Enviado desde Serial: %c %d\n", cmd, speed);
       } else {
         Serial.print("Comando inválido desde Serial: ");
         Serial.println(input);
@@ -153,28 +164,31 @@ void loop() {
     }
   }
 
-  // Mostrar datos del Nano hacia el cliente Telnet y Serial PC
+  // Leer datos del Nano y acumular mensajes en cola para Telnet
   while (Serial2.available()) {
     char c = Serial2.read();
+    lastNanoData = millis();
     if (c == '\n' || c == '\r') {
-      if (nanoLine.startsWith("D:")) {
-        // Mensaje de distancia
-        if (telnetClient && telnetClient.connected()) {
-          telnetClient.print("[Nano] ");
-          telnetClient.println(nanoLine);
+      if (nanoLine.length() > 0) {
+        String mensaje;
+        if (nanoLine.startsWith("D:")) {
+          mensaje = "[Nano] " + nanoLine + "\n";
+        } else {
+          mensaje = nanoLine + "\n";
         }
-        Serial.print("[Nano] ");
-        Serial.println(nanoLine);
-      } else if (nanoLine.length() > 0) {
-        // Otros mensajes del Nano
-        if (telnetClient && telnetClient.connected()) {
-          telnetClient.println(nanoLine);
-        }
-        Serial.println(nanoLine);
+        Serial.print(mensaje); // Enviar a Serial siempre
+        telnetMessageQueue += mensaje; // Acumular para Telnet
+        nanoLine = "";
       }
-      nanoLine = "";
     } else {
       nanoLine += c;
     }
+  }
+
+  // Enviar mensajes en cola a Telnet si han pasado 2 segundos sin entrada por Telnet
+  if (telnetClient && telnetClient.connected() && telnetMessageQueue.length() > 0 &&
+      (millis() - lastTelnetInputTime > 2000)) {
+    telnetClient.print(telnetMessageQueue);
+    telnetMessageQueue = "";
   }
 }
