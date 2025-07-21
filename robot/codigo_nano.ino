@@ -1,14 +1,14 @@
-// --- Pines Motores ---
+// --- Pines Motores de Movilidad ---
 #define M1_IN1 7
 #define M1_IN2 8
-#define M1_ENA 9
+#define M1_ENA 9  // PWM
 
 #define M2_IN3 11
 #define M2_IN4 12
-#define M2_ENB 10
+#define M2_ENB 10 // PWM
 
 // --- Sensor Ultrasónico HC-SR04 ---
-#define TRIG_PIN A0
+#define TRIG_PIN A0 // Se usan pines analógicos como digitales si están disponibles
 #define ECHO_PIN A1
 
 // --- Parámetros ---
@@ -30,51 +30,54 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
-  Serial.begin(9600); // Comunicación con ESP32
+  Serial.begin(9600); // ¡CUIDADO! Este Serial se usará para comunicar con el Nano 1.
+                      // Si usas el Monitor Serial del IDE, desconecta el Nano 1 primero.
   stopMotors();
+  Serial.println("Nano Secundario iniciado. Esperando comandos del Nano Principal.");
 }
 
 void loop() {
   // Checa obstáculo si la función está activada
   if (obstacle_avoidance_enabled && detectObstacle(OBSTACLE_DISTANCE_CM)) {
     avoidObstacle();
-    return;
+    return; // Si evade, no procesa comandos de movimiento adicionales por ahora
   }
 
-  // Enviar distancia periódicamente al ESP32
+  // Enviar distancia periódicamente al Nano 1
   unsigned long now = millis();
   if (now - lastDistanceSent >= DISTANCE_SEND_INTERVAL) {
     float dist = measureDistance();
-    Serial.print("D:");
+    Serial.print("D:"); // Prefijo para que el Nano 1 pueda identificar el tipo de mensaje
     Serial.println(dist, 1); // Un decimal de precisión
     lastDistanceSent = now;
   }
 
-  // Leer comando desde ESP32
-  if (Serial.available() >= 2) {
+  // Leer comando desde Nano 1
+  if (Serial.available() >= 2) { // Espera al menos 2 bytes: comando + velocidad/estado
     char cmd = Serial.read();
-    uint8_t speed = Serial.read();
+    uint8_t value = Serial.read(); // Puede ser velocidad o un valor de 0/1 para enable/disable
 
     if (cmd == 'E') {
-      obstacle_avoidance_enabled = speed ? true : false;
+      obstacle_avoidance_enabled = value ? true : false;
       Serial.print("Evasion de obstaculos: ");
       Serial.println(obstacle_avoidance_enabled ? "ACTIVADA" : "DESACTIVADA");
-      return;
+      return; // Ya se procesó el comando
     }
     
-    if (speed < 0 || speed > 255) {
+    // Si no es 'E', debe ser un comando de movimiento con velocidad
+    if (value < 0 || value > 255) {
       Serial.println("Velocidad no válida. Debe ser entre 0 y 255.");
       return;
     }
 
-    processCommand(cmd, speed);
+    processCommand(cmd, value); // 'value' ahora es 'speed'
     if (cmd == 'S') {
       Serial.println("Motores detenidos.");
     } else {
       Serial.print("Comando recibido: ");
       Serial.print(cmd);
       Serial.print(" con velocidad: ");
-      Serial.println(speed);
+      Serial.println(value);
     }
   }
 }
@@ -117,11 +120,11 @@ void stopMotors() {
   setMotor(M2_IN3, M2_IN4, M2_ENB, true, 0);
 }
 
-// --- Motor helper ---
+// --- Motor helper (para este Nano) ---
 void setMotor(int in1, int in2, int ena, bool forward, uint8_t vel) {
   digitalWrite(in1, forward ? HIGH : LOW);
   digitalWrite(in2, forward ? LOW : HIGH);
-  analogWrite(ena, vel);
+  analogWrite(ena, vel); // Este Nano tiene los pines PWM de movilidad
 }
 
 // --- Sensor ultrasónico ---
@@ -149,23 +152,14 @@ float measureDistance() {
 
 // --- Algoritmo de esquivar obstáculo ---
 void avoidObstacle() {
-  // 1. Detenerse
   stopMotors();
   delay(1250);
-
-  // 2. Retroceder
   moveBackward(80);
   delay(OBSTACLE_AVOID_TIME);
-
-  // 3. Girar derecha
   turnRight(85);
   delay(OBSTACLE_AVOID_TIME);
-
-  // 4. Avanzar
   moveForward(65);
   delay(OBSTACLE_AVOID_TIME);
-
-  // 5. Detenerse y esperar
   stopMotors();
   delay(200);
 }
