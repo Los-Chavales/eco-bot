@@ -3,64 +3,59 @@
 
 // --- CONFIGURACIÓN BLUETOOTH ---
 #define BLUETOOTH_RX_PIN 2 // Pin RX del Arduino conectado al TX del módulo Bluetooth
-#define BLUETOOTH_TX_PIN 3 // Pin TX del Arduino conectado al RX del módulo Bluetooth
+#define BLUETOOTH_TX_PIN 4 // Pin TX del Arduino conectado al RX del módulo Bluetooth (¡CAMBIADO A D4 para liberar D3!)
 SoftwareSerial bluetoothSerial(BLUETOOTH_RX_PIN, BLUETOOTH_TX_PIN); // RX, TX
 
-// --- Pines Motores de Movilidad (Arduino Nano) ---
+// --- Pines Motores de Movilidad (Arduino Nano - con PWM) ---
 // Asume un driver L298N o similar para 2 motores de movilidad
 #define M1_IN1 7
 #define M1_IN2 8
-#define M1_ENA 9  // PWM
+#define M1_ENA 9  // PWM (OK)
 
-#define M2_IN3 11
-#define M2_IN4 12
-#define M2_ENB 10 // PWM
+#define M2_IN3 12
+#define M2_IN4 13 // Pin digital 13 (usado también por M2_IN4)
+#define M2_ENB 10 // PWM (OK)
 
-// --- Pines Motores Adicionales (Arduino Nano) ---
-// **IMPORTANTE:** Estos pines asumen que tienes drivers adicionales para estos motores.
-// Un solo L298N solo maneja 2 motores DC.
-// Si solo tienes un L298N, necesitarás reevaluar cómo controlar estos motores.
-// Para este ejemplo, se asume que cada motor tiene su propio control (ej. otro L298N, o transistores/reles).
-
-// Motor principal del Compactador
-#define COMPACTOR_MAIN_IN1 4
-#define COMPACTOR_MAIN_IN2 5
-#define COMPACTOR_MAIN_ENA 6 // PWM
-
-// Motor DC para la acción del compactador (simula el movimiento del servo)
-#define COMPACTOR_ACTION_IN1 A2 // Pines para el nuevo motor DC
-#define COMPACTOR_ACTION_IN2 A3
-#define COMPACTOR_ACTION_ENA A4 // PWM para el nuevo motor DC
-
-// Motor de Recolección (Cepillo)
-#define BRUSH_IN1 A5
-#define BRUSH_IN2 13 // Pin digital 13
-#define BRUSH_ENB 11 // Reasignado a un pin PWM disponible (si M2_ENB no lo usa)
-                     // Si M2_ENB usa el pin 10, y M1_ENA usa el 9, el pin 11 es una buena opción para PWM.
-
-// **NOTA IMPORTANTE SOBRE PINES:**
-// Tal como se mencionó en la conversación anterior, el Arduino Nano tiene limitaciones de pines PWM.
-// Estas asignaciones aquí están asumiendo que el pin 3 es usado para un servo y no para Bluetooth TX.
-// Si usas D2 y D3 para SoftwareSerial, el pin D3 NO PUEDE ser usado para Servo3.
-// En ese caso, deberías reasignar BLUETOOTH_TX_PIN a D4 y SERVO3_PIN a D3 (si estuviera libre),
-// o considerar un módulo PCA9685 si necesitas más pines PWM.
-#define SERVO1_PIN 6 // PWM
-#define SERVO2_PIN 5 // PWM
-#define SERVO3_PIN 3 // PWM
+// --- Pines Servos de Compuerta Frontal (con PWM) ---
+// Estos pines se mantienen como solicitaste.
+#define SERVO1_PIN 6 // PWM (OK)
+#define SERVO2_PIN 5 // PWM (OK)
+#define SERVO3_PIN 3 // PWM (OK, D3 ahora está libre ya que Bluetooth TX se movió a D4)
 
 // Objetos Servo
 Servo servo1;
 Servo servo2;
 Servo servo3;
 
+// --- Pines Motores Adicionales (Arduino Nano - Reasignados) ---
+// **IMPORTANTE:** Para el Nano, estos motores operarán con limitaciones de PWM.
+// COMPACTOR_MAIN y BRUSH son ON/OFF. COMPACTOR_ACTION tiene PWM.
+
+// Motor principal del Compactador (ON/OFF - SIN PWM en ENA)
+// ¡Pines reasignados para evitar conflictos y no usar D0/D1!
+#define COMPACTOR_MAIN_IN1 A0 // Nuevo pin digital
+#define COMPACTOR_MAIN_IN2 A1 // Nuevo pin digital
+#define COMPACTOR_MAIN_ENA A4 // Nuevo pin digital (NO PWM - se usará digitalWrite)
+
+// Motor DC para la acción del compactador (con PWM)
+#define COMPACTOR_ACTION_IN1 A2
+#define COMPACTOR_ACTION_IN2 A3
+#define COMPACTOR_ACTION_ENA 11 // PWM (OK - utiliza el último pin PWM disponible)
+
+// Motor de Recolección (Cepillo) (ON/OFF - SIN PWM en ENB)
+// ¡Pines reasignados para evitar conflictos y no usar D0/D1!
+#define BRUSH_IN1 A5 // Pin digital
+#define BRUSH_IN2 A6 // Nuevo pin digital
+#define BRUSH_ENB A7 // Nuevo pin digital (NO PWM - se usará digitalWrite)
+
 // --- Velocidades ---
 #define SPEED_MOVE 200
 #define SPEED_TURN 180
-#define SPEED_COMPACTOR_MAIN 255
-#define SPEED_BRUSH 200
+#define SPEED_COMPACTOR_MAIN 255 // Velocidad máxima para compactador principal (si es ON/OFF)
+#define SPEED_BRUSH 200          // Velocidad máxima para cepillo (si es ON/OFF)
 
 // Parámetros para el nuevo motor DC del compactador
-#define SPEED_COMPACTOR_ACTION 180 // Velocidad para el motor de acción del compactador
+#define SPEED_COMPACTOR_ACTION 180 // Velocidad para el motor de acción del compactador (con PWM)
 #define COMPACTOR_ACTION_DURATION 1500 // Duración del movimiento del motor de acción en ms
 #define COMPACTOR_DELAY_AFTER_MAIN 500 // Retraso entre el motor principal y el de acción en ms
 
@@ -96,15 +91,15 @@ void setup() {
   // Configurar pines de los motores adicionales
   pinMode(COMPACTOR_MAIN_IN1, OUTPUT);
   pinMode(COMPACTOR_MAIN_IN2, OUTPUT);
-  pinMode(COMPACTOR_MAIN_ENA, OUTPUT);
+  pinMode(COMPACTOR_MAIN_ENA, OUTPUT); // Digital, no PWM
 
   pinMode(COMPACTOR_ACTION_IN1, OUTPUT);
   pinMode(COMPACTOR_ACTION_IN2, OUTPUT);
-  pinMode(COMPACTOR_ACTION_ENA, OUTPUT);
+  pinMode(COMPACTOR_ACTION_ENA, OUTPUT); // PWM
 
   pinMode(BRUSH_IN1, OUTPUT);
   pinMode(BRUSH_IN2, OUTPUT);
-  pinMode(BRUSH_ENB, OUTPUT);
+  pinMode(BRUSH_ENB, OUTPUT); // Digital, no PWM
 
   // Asegurarse de que todos los motores estén apagados al inicio
   stopMotors();
@@ -167,7 +162,6 @@ void processDabbleCommand(char cmd) {
     case '4': // Botón Cruz/Y (Asignado a Cerrar Compuerta)
       closeFrontGate();
       break;
-    // El caso 'E' para evasión de obstáculos se ha eliminado.
     default:
       // Si recibimos cualquier otro caracter, asumimos que es una señal para detenerse
       // o un caracter no reconocido, y detenemos todo por seguridad.
@@ -179,10 +173,20 @@ void processDabbleCommand(char cmd) {
   }
 }
 
+// *** IMPORTANTE: Esta función se modificó para manejar pines ENA que no son PWM. ***
+// Para pines ENA que no son PWM, 'vel' solo determinará ON (HIGH) u OFF (LOW).
 void setMotor(int in1, int in2, int ena, bool forward, uint8_t vel) {
   digitalWrite(in1, forward ? HIGH : LOW);
   digitalWrite(in2, forward ? LOW : HIGH);
-  analogWrite(ena, vel);
+
+  // Comprobar si el pin 'ena' es un pin PWM hardware en el Nano
+  // Los pines PWM son: D3, D5, D6, D9, D10, D11
+  if (ena == 3 || ena == 5 || ena == 6 || ena == 9 || ena == 10 || ena == 11) {
+    analogWrite(ena, vel); // Usar PWM si el pin lo soporta
+  } else {
+    // Si el pin no es PWM, se usa como ON/OFF digital
+    digitalWrite(ena, (vel > 0) ? HIGH : LOW);
+  }
 }
 
 void moveForward(uint8_t vel) {
@@ -206,8 +210,8 @@ void turnRight(uint8_t vel) {
 }
 
 void stopMotors() {
-  setMotor(M1_IN1, M1_IN2, M1_ENA, true, 0);
-  setMotor(M2_IN3, M2_IN4, M2_ENB, true, 0);
+  setMotor(M1_IN1, M1_IN2, M1_ENA, true, 0); // Velocidad 0 para detener
+  setMotor(M2_IN3, M2_IN4, M2_ENB, true, 0); // Velocidad 0 para detener
 }
 
 // --- Funciones para Motores Adicionales (gestionadas por Arduino Nano) ---
@@ -217,7 +221,7 @@ void activateCompactorMain(uint8_t vel) {
 }
 
 void stopCompactorMain() {
-  setMotor(COMPACTOR_MAIN_IN1, COMPACTOR_MAIN_IN2, COMPACTOR_MAIN_ENA, true, 0);
+  setMotor(COMPACTOR_MAIN_IN1, COMPACTOR_MAIN_IN2, COMPACTOR_MAIN_ENA, true, 0); // Velocidad 0 para detener
   Serial.println("Compactador Principal Detenido");
 }
 
@@ -227,7 +231,7 @@ void activateCompactorAction(uint8_t vel) {
 }
 
 void stopCompactorAction() {
-  setMotor(COMPACTOR_ACTION_IN1, COMPACTOR_ACTION_IN2, COMPACTOR_ACTION_ENA, true, 0);
+  setMotor(COMPACTOR_ACTION_IN1, COMPACTOR_ACTION_IN2, COMPACTOR_ACTION_ENA, true, 0); // Velocidad 0 para detener
   Serial.println("Compactador Acción Detenido");
 }
 
@@ -237,23 +241,23 @@ void activateBrush(uint8_t vel) {
 }
 
 void stopBrush() {
-  setMotor(BRUSH_IN1, BRUSH_IN2, BRUSH_ENB, true, 0); // Detener
+  setMotor(BRUSH_IN1, BRUSH_IN2, BRUSH_ENB, true, 0); // Velocidad 0 para detener
   Serial.println("Cepillo Detenido");
 }
 
 // Función de secuencia de compactación (bloqueante)
 void activateCompactorSequence() {
   // 1. Activa el motor principal del compactador
-  activateCompactorMain(SPEED_COMPACTOR_MAIN);
+  activateCompactorMain(SPEED_COMPACTOR_MAIN); // Este motor ahora es ON/OFF
   delay(COMPACTOR_DELAY_AFTER_MAIN); // Espera un poco para que el motor principal actúe
 
   // 2. Activa el motor de acción (simulando el movimiento del servo)
-  activateCompactorAction(SPEED_COMPACTOR_ACTION);
+  activateCompactorAction(SPEED_COMPACTOR_ACTION); // Este motor sí tiene PWM
   delay(COMPACTOR_ACTION_DURATION); // Mantiene el motor de acción girando por la duración
   stopCompactorAction();            // Detiene el motor de acción
 
   // 3. Detiene el motor principal del compactador
-  stopCompactorMain();
+  stopCompactorMain(); // Este motor ahora es ON/OFF
   Serial.println("Secuencia de Compactación Completa");
 }
 
