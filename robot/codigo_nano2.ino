@@ -35,30 +35,15 @@ SoftwareSerial bluetoothSerial(BLUETOOTH_RX_PIN, BLUETOOTH_TX_PIN); // RX, TX
 // Motor de Recolección (Cepillo)
 #define BRUSH_IN1 A5
 #define BRUSH_IN2 13 // Pin digital 13
-#define BRUSH_ENB 5  // PWM (¡Cuidado! Pin 5 ya usado para COMPACTOR_MAIN_IN2. Reasignar si es un problema)
-                     // **NOTA:** Si el pin 5 está en uso por COMPACTOR_MAIN_IN2, debes reasignar BRUSH_ENB a otro pin PWM (ej. 11 o 10 si no se usan para M2_ENB).
-                     // Para este ejemplo, asumiré que puedes usar el pin 5 como PWM si COMPACTOR_MAIN_IN2 es solo digital.
-                     // Si el pin 5 es compartido y ambos necesitan PWM, esto causará un conflicto.
-                     // He reasignado BRUSH_ENB a 11 para evitar conflictos con COMPACTOR_MAIN_IN2.
-
-#undef BRUSH_ENB // Eliminar la definición anterior para redefinir
 #define BRUSH_ENB 11 // Reasignado a un pin PWM disponible (si M2_ENB no lo usa)
                      // Si M2_ENB usa el pin 10, y M1_ENA usa el 9, el pin 11 es una buena opción para PWM.
 
-// --- Pines de Servos de Compuerta Frontal ---
-#define SERVO1_PIN 12 // Pin PWM disponible
-#define SERVO2_PIN 4  // Pin PWM disponible (¡Cuidado! Pin 4 ya usado para COMPACTOR_MAIN_IN1. Reasignar si es un problema)
-#define SERVO3_PIN 5  // Pin PWM disponible (¡Cuidado! Pin 5 ya usado para COMPACTOR_MAIN_IN2. Reasignar si es un problema)
-
 // **NOTA IMPORTANTE SOBRE PINES:**
-// Los pines 4, 5, 6, 9, 10, 11, 12 son pines PWM en Arduino Nano.
-// He intentado reasignar para evitar conflictos, pero DEBES verificar tus conexiones físicas y la disponibilidad de pines PWM.
-// Si un pin se usa como entrada/salida digital para un motor y como PWM para un servo, habrá un conflicto.
-// Recomiendo usar pines PWM dedicados para los servos (3, 5, 6, 9, 10, 11).
-// Reasignemos los servos a pines PWM más seguros:
-#undef SERVO1_PIN
-#undef SERVO2_PIN
-#undef SERVO3_PIN
+// Tal como se mencionó en la conversación anterior, el Arduino Nano tiene limitaciones de pines PWM.
+// Estas asignaciones aquí están asumiendo que el pin 3 es usado para un servo y no para Bluetooth TX.
+// Si usas D2 y D3 para SoftwareSerial, el pin D3 NO PUEDE ser usado para Servo3.
+// En ese caso, deberías reasignar BLUETOOTH_TX_PIN a D4 y SERVO3_PIN a D3 (si estuviera libre),
+// o considerar un módulo PCA9685 si necesitas más pines PWM.
 #define SERVO1_PIN 6 // PWM
 #define SERVO2_PIN 5 // PWM
 #define SERVO3_PIN 3 // PWM
@@ -67,14 +52,6 @@ SoftwareSerial bluetoothSerial(BLUETOOTH_RX_PIN, BLUETOOTH_TX_PIN); // RX, TX
 Servo servo1;
 Servo servo2;
 Servo servo3;
-
-// --- Sensor Ultrasónico HC-SR04 ---
-#define TRIG_PIN A0
-#define ECHO_PIN A1
-
-// --- Parámetros ---
-#define OBSTACLE_DISTANCE_CM 25    // Distancia de detección de obstáculo
-#define OBSTACLE_AVOID_TIME 600    // ms para avanzar/retroceder/girar en evitado
 
 // --- Velocidades ---
 #define SPEED_MOVE 200
@@ -86,11 +63,6 @@ Servo servo3;
 #define SPEED_COMPACTOR_ACTION 180 // Velocidad para el motor de acción del compactador
 #define COMPACTOR_ACTION_DURATION 1500 // Duración del movimiento del motor de acción en ms
 #define COMPACTOR_DELAY_AFTER_MAIN 500 // Retraso entre el motor principal y el de acción en ms
-
-// --- VARIABLES GLOBALES ---
-bool obstacle_avoidance_enabled = true; // Activado por defecto
-unsigned long lastDistanceSent = 0;
-const unsigned long DISTANCE_SEND_INTERVAL = 500; // ms
 
 // --- Prototipos de funciones ---
 void setMotor(int in1, int in2, int ena, bool forward, uint8_t vel);
@@ -111,14 +83,10 @@ void activateCompactorSequence();
 void openFrontGate();
 void closeFrontGate();
 
-float measureDistance();
-bool detectObstacle(float limit_cm);
-void avoidObstacle();
-
 void processDabbleCommand(char cmd);
 
 void setup() {
-  Serial.begin(9600); // Para depuración en el monitor serial de Arduino IDE
+  Serial.begin(9600);      // Para depuración en el monitor serial de Arduino IDE
   bluetoothSerial.begin(9600); // Inicia comunicación con el módulo Bluetooth
 
   // Configurar pines de los motores de movilidad
@@ -151,36 +119,11 @@ void setup() {
 
   openFrontGate(); // Abrir compuerta al inicio
 
-  // Sensor ultrasónico
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-
   Serial.println("Arduino Nano iniciado y listo para comandos Bluetooth.");
   Serial.println("Conecta la app Dabble (Gamepad) via Bluetooth.");
 }
 
 void loop() {
-  // Checa obstáculo si la función está activada
-  if (obstacle_avoidance_enabled && detectObstacle(OBSTACLE_DISTANCE_CM)) {
-    avoidObstacle();
-    // Después de evitar, detenemos los motores para evitar que siga intentando moverse
-    // y para dar tiempo a que el usuario reaccione.
-    stopMotors();
-    return;
-  }
-
-  // Enviar distancia periódicamente (opcional, para depuración o si tienes una interfaz que la muestre)
-  unsigned long now = millis();
-  if (now - lastDistanceSent >= DISTANCE_SEND_INTERVAL) {
-    float dist = measureDistance();
-    Serial.print("Distancia: ");
-    Serial.print(dist, 1); // Un decimal de precisión
-    Serial.println(" cm");
-    // Si quisieras enviar esto a Dabble, tendrías que usar un módulo de texto en Dabble
-    // y enviar algo como: bluetoothSerial.print("D:"); bluetoothSerial.println(dist);
-    lastDistanceSent = now;
-  }
-
   // Leer comando desde Bluetooth
   if (bluetoothSerial.available()) {
     char cmd = bluetoothSerial.read();
@@ -224,11 +167,7 @@ void processDabbleCommand(char cmd) {
     case '4': // Botón Cruz/Y (Asignado a Cerrar Compuerta)
       closeFrontGate();
       break;
-    case 'E': // Si quisieras un botón para activar/desactivar evasión de obstáculos
-      obstacle_avoidance_enabled = !obstacle_avoidance_enabled;
-      Serial.print("Evasion de obstaculos: ");
-      Serial.println(obstacle_avoidance_enabled ? "ACTIVADA" : "DESACTIVADA");
-      break;
+    // El caso 'E' para evasión de obstáculos se ha eliminado.
     default:
       // Si recibimos cualquier otro caracter, asumimos que es una señal para detenerse
       // o un caracter no reconocido, y detenemos todo por seguridad.
@@ -331,50 +270,4 @@ void closeFrontGate() {
   servo2.write(0);
   servo3.write(0);
   Serial.println("Compuerta Frontal Cerrada");
-}
-
-// --- Sensor ultrasónico ---
-float measureDistance() {
-  long duration;
-  float distance_cm;
-
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
-  duration = pulseIn(ECHO_PIN, HIGH, 25000); // Timeout ~4.3m
-  distance_cm = duration * 0.034 / 2;
-
-  return distance_cm;
-}
-
-bool detectObstacle(float limit_cm) {
-  float distance_cm = measureDistance();
-  return (distance_cm > 0 && distance_cm <= limit_cm);
-}
-
-// --- Algoritmo de esquivar obstáculo ---
-void avoidObstacle() {
-  Serial.println("Obstaculo detectado! Iniciando evasion...");
-  // 1. Detenerse
-  stopMotors();
-  delay(1250);
-
-  // 2. Retroceder
-  moveBackward(80);
-  delay(OBSTACLE_AVOID_TIME);
-
-  // 3. Girar derecha
-  turnRight(85);
-  delay(OBSTACLE_AVOID_TIME);
-
-  // 4. Avanzar
-  moveForward(65);
-  delay(OBSTACLE_AVOID_TIME);
-
-  // 5. Detenerse
-  stopMotors();
-  Serial.println("Evasion de obstaculos completada.");
 }
