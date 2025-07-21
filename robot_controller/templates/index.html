@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-g">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control Robot Recolector 🤖</title>
     <link rel="stylesheet" href="../static/style.css">
@@ -10,7 +10,7 @@
     <div class="container">
         <h1>Control del Robot</h1>
         <div id="status-bar" class="status">Esperando comando...</div>
-        
+
         <div class="controls-grid">
             <div></div>
             <button class="control-btn" data-command="FORWARD">⬆️ Avanzar</button>
@@ -29,6 +29,12 @@
         <div class="special-controls">
             <button class="control-btn special-btn" data-command="BRUSH">🧹 Activar Cepillo</button>
             <button class="control-btn special-btn" data-command="COMPACTOR">🧱 Activar Compactador</button>
+        </div>
+
+        <h2>Control de Compuerta Frontal</h2>
+        <div class="special-controls">
+            <button class="control-btn special-btn" data-command="OPEN_GATE">🚪 Abrir Compuerta</button>
+            <button class="control-btn special-btn" data-command="CLOSE_GATE">🔒 Cerrar Compuerta</button>
         </div>
     </div>
 

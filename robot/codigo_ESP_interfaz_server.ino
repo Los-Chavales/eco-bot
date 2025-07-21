@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include <ESP32PWM.h> // Necesario para manejar los servos con ledcWrite correctamente
 
 // --- CONFIGURACIÓN ---
 const char* ssid = "snowden";
@@ -17,14 +18,29 @@ const char* password = "qwertyasdfghzxcvb54321";
 #define COMPACTOR_MAIN_ENA 33     // PWM Motor A
 
 // Nuevo Motor DC para la acción del compactador (simula el movimiento del servo)
-#define COMPACTOR_ACTION_IN1 21  // Pines para el nuevo motor DC
+#define COMPACTOR_ACTION_IN1 21   // Pines para el nuevo motor DC
 #define COMPACTOR_ACTION_IN2 22   // (Ajusta estos pines a tus conexiones reales en el ESP32)
-#define COMPACTOR_ACTION_ENA 23    // PWM para el nuevo motor DC
+#define COMPACTOR_ACTION_ENA 23   // PWM para el nuevo motor DC
 
 // Motor de Recolección (Cepillo)
-#define BRUSH_IN1 27         // Motor B (recolección/cepillo)
+#define BRUSH_IN1 27              // Motor B (recolección/cepillo)
 #define BRUSH_IN2 14
-#define BRUSH_ENB 32         // PWM Motor B
+#define BRUSH_ENB 32              // PWM Motor B
+
+// --- Pines de Servos de Compuerta Frontal ---
+#define SERVO1_PIN 19
+#define SERVO2_PIN 18
+#define SERVO3_PIN 5
+
+// --- Canales PWM para Servos ---
+#define SERVO_PWM_FREQ 50      // Frecuencia de 50Hz para servos
+#define SERVO_PWM_RESOLUTION 10 // 10 bits de resolución (0-1023)
+#define SERVO_MIN_PULSE_US 500  // 500us para 0 grados
+#define SERVO_MAX_PULSE_US 2500 // 2500us para 180 grados (ajusta si tus servos son diferentes)
+
+#define SERVO1_CHANNEL 3
+#define SERVO2_CHANNEL 4
+#define SERVO3_CHANNEL 5
 
 // --- VARIABLES GLOBALES ---
 WebServer server(80); // Servidor web en el puerto 80
@@ -41,6 +57,7 @@ WebServer server(80); // Servidor web en el puerto 80
 #define COMPACTOR_ACTION_DURATION 1500 // Duración del movimiento del motor de acción en ms (ajusta según necesites)
 #define COMPACTOR_DELAY_AFTER_MAIN 500 // Retraso entre el motor principal y el de acción en ms
 
+
 // --- Funciones para Motores (gestionadas por ESP32) ---
 void setMotorESP32(int in1, int in2, int ena, bool forward, uint8_t vel) {
   digitalWrite(in1, forward ? HIGH : LOW);
@@ -49,31 +66,62 @@ void setMotorESP32(int in1, int in2, int ena, bool forward, uint8_t vel) {
 }
 
 void activateCompactorMain(uint8_t vel) {
-  // Activa el motor principal del compactador en una dirección
   setMotorESP32(COMPACTOR_MAIN_IN1, COMPACTOR_MAIN_IN2, COMPACTOR_MAIN_ENA, true, vel);
   Serial.println("Compactador Principal Activado");
 }
 
 void stopCompactorMain() {
-  // Detiene el motor principal del compactador
   setMotorESP32(COMPACTOR_MAIN_IN1, COMPACTOR_MAIN_IN2, COMPACTOR_MAIN_ENA, true, 0);
   Serial.println("Compactador Principal Detenido");
 }
 
 void activateCompactorAction(uint8_t vel) {
-  // Activa el motor DC para la acción de compactación (simula el servo)
   setMotorESP32(COMPACTOR_ACTION_IN1, COMPACTOR_ACTION_IN2, COMPACTOR_ACTION_ENA, true, vel); // Asume una dirección
   Serial.println("Compactador Acción Activado");
 }
 
 void stopCompactorAction() {
-  // Detiene el motor DC de la acción de compactación
   setMotorESP32(COMPACTOR_ACTION_IN1, COMPACTOR_ACTION_IN2, COMPACTOR_ACTION_ENA, true, 0);
   Serial.println("Compactador Acción Detenido");
 }
 
+void activateBrush(uint8_t vel) {
+  setMotorESP32(BRUSH_IN1, BRUSH_IN2, BRUSH_ENB, true, vel);
+  Serial.println("Cepillo Activado");
+}
+
+void stopBrush() {
+  setMotorESP32(BRUSH_IN1, BRUSH_IN2, BRUSH_ENB, true, 0); // Detener
+  Serial.println("Cepillo Detenido");
+}
+
+// --- Funciones de control de Servos (gestionadas por ESP32) ---
+// Función para escribir ángulo en el servo
+void writeServoAngle(int pin, int channel, int angle) {
+  long pulseWidth = map(angle, 0, 180, SERVO_MIN_PULSE_US, SERVO_MAX_PULSE_US);
+  uint32_t dutyCycle = (pulseWidth * (1 << SERVO_PWM_RESOLUTION)) / (1000000 / SERVO_PWM_FREQ);
+  ledcWrite(channel, dutyCycle);
+  Serial.printf("Servo en pin %d (canal %d) a %d grados (duty: %lu)\n", pin, channel, angle, dutyCycle);
+}
+
+// Funciones para compuerta frontal (usando los servos)
+void openFrontGate() {
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 90); // Abre a 90 grados
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 90);
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 90);
+  Serial.println("Compuerta Frontal Abierta");
+}
+
+void closeFrontGate() {
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 0); // Cierra a 0 grados
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 0);
+  Serial.println("Compuerta Frontal Cerrada");
+}
+
+// Función de secuencia de compactación (bloqueante, como en el original)
 void activateCompactorSequence() {
-  // 1. Activa el motor principal del compactador
+   // 1. Activa el motor principal del compactador
   activateCompactorMain(SPEED_COMPACTOR_MAIN);
   delay(COMPACTOR_DELAY_AFTER_MAIN); // Espera un poco para que el motor principal actúe
 
@@ -86,18 +134,6 @@ void activateCompactorSequence() {
   // Depende de cómo quieras que funcione el compactador. Si el motor principal es solo para iniciar, deténlo.
   // Si el motor principal debe seguir girando, no lo detengas aquí.
   stopCompactorMain(); // Detenemos el motor principal después de la acción.
-}
-
-
-void activateBrush(uint8_t vel) {
-  // Asumiendo una dirección de giro para el cepillo
-  setMotorESP32(BRUSH_IN1, BRUSH_IN2, BRUSH_ENB, true, vel);
-  Serial.println("Cepillo Activado");
-}
-
-void stopBrush() {
-  setMotorESP32(BRUSH_IN1, BRUSH_IN2, BRUSH_ENB, true, 0); // Detener
-  Serial.println("Cepillo Detenido");
 }
 
 
@@ -120,19 +156,30 @@ void handleCommand() {
   Serial.print("Comando web recibido: ");
   Serial.println(command);
 
-  // Traduce el comando web a un comando para el Nano vía Serial2
-  // O ejecuta la acción directamente si es para el ESP32
+  // NOTA: Con la secuencia de compactación BLOQUEANTE (`delay()`),
+  // es importante considerar qué comandos permitir durante su ejecución.
+  // Aquí, se permite BRUSH y los nuevos comandos de compuerta.
+  // Los comandos de movimiento (FORWARD, etc.) no deben usarse si el robot se mueve durante la compactación.
+
   if (strcmp(command, "FORWARD") == 0)      { Serial2.printf("F%d\n", SPEED_MOVE); }
   else if (strcmp(command, "BACKWARD") == 0) { Serial2.printf("B%d\n", SPEED_MOVE); }
   else if (strcmp(command, "LEFT") == 0)     { Serial2.printf("L%d\n", SPEED_TURN); }
   else if (strcmp(command, "RIGHT") == 0)    { Serial2.printf("R%d\n", SPEED_TURN); }
-  else if (strcmp(command, "BRUSH") == 0)    { activateBrush(SPEED_BRUSH); }      // ESP32 controla el cepillo
-  else if (strcmp(command, "COMPACTOR") == 0){ activateCompactorSequence(); } // ESP32 controla la secuencia del compactador
+  else if (strcmp(command, "BRUSH") == 0)    { activateBrush(SPEED_BRUSH); }
+  else if (strcmp(command, "COMPACTOR") == 0){ activateCompactorSequence(); } // ESTO ES BLOQUEANTE
   else if (strcmp(command, "STOP") == 0)     {
-    Serial2.println("S0"); // Manda a detener los motores de movilidad al Nano
-    stopBrush();           // Detiene el cepillo si está activo
-    stopCompactorMain();   // Detiene el motor principal del compactador
-    stopCompactorAction(); // Detiene el motor de acción del compactador
+    Serial2.println("S0");
+    stopBrush();
+    stopCompactorMain();
+    stopCompactorAction();
+    // No hay necesidad de manejar estados de compactación aquí, ya que es bloqueante.
+    // Si la secuencia está en curso, se detendrá lo que pueda detenerse y continuará después del delay.
+  }
+  else if (strcmp(command, "OPEN_GATE") == 0) { // Nuevo comando para abrir compuerta manualmente
+    openFrontGate();
+  }
+  else if (strcmp(command, "CLOSE_GATE") == 0) { // Nuevo comando para cerrar compuerta manualmente
+    closeFrontGate();
   }
 
   server.send(200, "application/json", "{\"status\":\"ok\"}");
@@ -160,6 +207,16 @@ void setup() {
   stopCompactorMain();
   stopCompactorAction();
 
+  // Configurar PWM para servos
+  ledcSetup(SERVO1_CHANNEL, SERVO_PWM_FREQ, SERVO_PWM_RESOLUTION);
+  ledcAttachPin(SERVO1_PIN, SERVO1_CHANNEL);
+  ledcSetup(SERVO2_CHANNEL, SERVO_PWM_FREQ, SERVO_PWM_RESOLUTION);
+  ledcAttachPin(SERVO2_PIN, SERVO2_CHANNEL);
+  ledcSetup(SERVO3_CHANNEL, SERVO_PWM_FREQ, SERVO_PWM_RESOLUTION);
+  ledcAttachPin(SERVO3_PIN, SERVO3_CHANNEL);
+
+  openFrontGate(); // Abrir compuerta al inicio
+
   // Conectar a WiFi
   Serial.print("Conectando a WiFi...");
   WiFi.begin(ssid, password);
@@ -179,4 +236,5 @@ void setup() {
 
 void loop() {
   server.handleClient(); // Atiende las peticiones web
+  // No hay proceso de compactación no bloqueante aquí, ya que activateCompactorSequence() es bloqueante.
 }
