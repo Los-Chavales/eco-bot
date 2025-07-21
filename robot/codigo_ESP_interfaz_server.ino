@@ -17,9 +17,9 @@ const char* password = "qwertyasdfghzxcvb54321";
 #define COMPACTOR_MAIN_ENA 33     // PWM Motor A
 
 // Nuevo Motor DC para la acción del compactador (simula el movimiento del servo)
-#define COMPACTOR_ACTION_IN1 18   // Pines para el nuevo motor DC
-#define COMPACTOR_ACTION_IN2 19   // (Ajusta estos pines a tus conexiones reales en el ESP32)
-#define COMPACTOR_ACTION_ENA 5    // PWM para el nuevo motor DC
+#define COMPACTOR_ACTION_IN1 21  // Pines para el nuevo motor DC
+#define COMPACTOR_ACTION_IN2 22   // (Ajusta estos pines a tus conexiones reales en el ESP32)
+#define COMPACTOR_ACTION_ENA 23    // PWM para el nuevo motor DC
 
 // Motor de Recolección (Cepillo)
 #define BRUSH_IN1 27         // Motor B (recolección/cepillo)
