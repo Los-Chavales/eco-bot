@@ -11,10 +11,17 @@ const char* password = "qwertyasdfghzxcvb54321";
 #define TX2 17
 
 // --- Pines Motores Adicionales (Controlados por ESP32) ---
-#define COMPACTOR_IN1 25     // Motor A (compactador)
-#define COMPACTOR_IN2 26
-#define COMPACTOR_ENA 33     // PWM Motor A
+// Motor principal del Compactador
+#define COMPACTOR_MAIN_IN1 25     // Motor A (compactador - principal)
+#define COMPACTOR_MAIN_IN2 26
+#define COMPACTOR_MAIN_ENA 33     // PWM Motor A
 
+// Nuevo Motor DC para la acción del compactador (simula el movimiento del servo)
+#define COMPACTOR_ACTION_IN1 18   // Pines para el nuevo motor DC
+#define COMPACTOR_ACTION_IN2 19   // (Ajusta estos pines a tus conexiones reales en el ESP32)
+#define COMPACTOR_ACTION_ENA 5    // PWM para el nuevo motor DC
+
+// Motor de Recolección (Cepillo)
 #define BRUSH_IN1 27         // Motor B (recolección/cepillo)
 #define BRUSH_IN2 14
 #define BRUSH_ENB 32         // PWM Motor B
@@ -26,26 +33,61 @@ WebServer server(80); // Servidor web en el puerto 80
 // Puedes ajustar las velocidades aquí
 #define SPEED_MOVE 200
 #define SPEED_TURN 180
-#define SPEED_COMPACTOR 255  // Velocidad para el compactador (directamente en ESP32)
-#define SPEED_BRUSH 200      // Velocidad para el cepillo (directamente en ESP32)
+#define SPEED_COMPACTOR_MAIN 255  // Velocidad para el motor principal del compactador
+#define SPEED_BRUSH 200           // Velocidad para el cepillo
 
-// --- Funciones para Motores Adicionales (gestionadas por ESP32) ---
+// Parámetros para el nuevo motor DC del compactador
+#define SPEED_COMPACTOR_ACTION 180 // Velocidad para el motor de acción del compactador
+#define COMPACTOR_ACTION_DURATION 1500 // Duración del movimiento del motor de acción en ms (ajusta según necesites)
+#define COMPACTOR_DELAY_AFTER_MAIN 500 // Retraso entre el motor principal y el de acción en ms
+
+// --- Funciones para Motores (gestionadas por ESP32) ---
 void setMotorESP32(int in1, int in2, int ena, bool forward, uint8_t vel) {
   digitalWrite(in1, forward ? HIGH : LOW);
   digitalWrite(in2, forward ? LOW : HIGH);
   analogWrite(ena, vel);
 }
 
-void activateCompactor(uint8_t vel) {
-  // Asumiendo una dirección de giro para el compactador
-  setMotorESP32(COMPACTOR_IN1, COMPACTOR_IN2, COMPACTOR_ENA, true, vel);
-  Serial.println("Compactador Activado");
+void activateCompactorMain(uint8_t vel) {
+  // Activa el motor principal del compactador en una dirección
+  setMotorESP32(COMPACTOR_MAIN_IN1, COMPACTOR_MAIN_IN2, COMPACTOR_MAIN_ENA, true, vel);
+  Serial.println("Compactador Principal Activado");
 }
 
-void stopCompactor() {
-  setMotorESP32(COMPACTOR_IN1, COMPACTOR_IN2, COMPACTOR_ENA, true, 0); // Detener
-  Serial.println("Compactador Detenido");
+void stopCompactorMain() {
+  // Detiene el motor principal del compactador
+  setMotorESP32(COMPACTOR_MAIN_IN1, COMPACTOR_MAIN_IN2, COMPACTOR_MAIN_ENA, true, 0);
+  Serial.println("Compactador Principal Detenido");
 }
+
+void activateCompactorAction(uint8_t vel) {
+  // Activa el motor DC para la acción de compactación (simula el servo)
+  setMotorESP32(COMPACTOR_ACTION_IN1, COMPACTOR_ACTION_IN2, COMPACTOR_ACTION_ENA, true, vel); // Asume una dirección
+  Serial.println("Compactador Acción Activado");
+}
+
+void stopCompactorAction() {
+  // Detiene el motor DC de la acción de compactación
+  setMotorESP32(COMPACTOR_ACTION_IN1, COMPACTOR_ACTION_IN2, COMPACTOR_ACTION_ENA, true, 0);
+  Serial.println("Compactador Acción Detenido");
+}
+
+void activateCompactorSequence() {
+  // 1. Activa el motor principal del compactador
+  activateCompactorMain(SPEED_COMPACTOR_MAIN);
+  delay(COMPACTOR_DELAY_AFTER_MAIN); // Espera un poco para que el motor principal actúe
+
+  // 2. Activa el motor de acción (simulando el movimiento del servo)
+  activateCompactorAction(SPEED_COMPACTOR_ACTION);
+  delay(COMPACTOR_ACTION_DURATION); // Mantiene el motor de acción girando por la duración
+  stopCompactorAction();            // Detiene el motor de acción
+
+  // 3. Detiene el motor principal del compactador (si la secuencia lo requiere, o déjalo correr si es continuo)
+  // Depende de cómo quieras que funcione el compactador. Si el motor principal es solo para iniciar, deténlo.
+  // Si el motor principal debe seguir girando, no lo detengas aquí.
+  stopCompactorMain(); // Detenemos el motor principal después de la acción.
+}
+
 
 void activateBrush(uint8_t vel) {
   // Asumiendo una dirección de giro para el cepillo
@@ -85,11 +127,12 @@ void handleCommand() {
   else if (strcmp(command, "LEFT") == 0)     { Serial2.printf("L%d\n", SPEED_TURN); }
   else if (strcmp(command, "RIGHT") == 0)    { Serial2.printf("R%d\n", SPEED_TURN); }
   else if (strcmp(command, "BRUSH") == 0)    { activateBrush(SPEED_BRUSH); }      // ESP32 controla el cepillo
-  else if (strcmp(command, "COMPACTOR") == 0){ activateCompactor(SPEED_COMPACTOR); } // ESP32 controla el compactador
+  else if (strcmp(command, "COMPACTOR") == 0){ activateCompactorSequence(); } // ESP32 controla la secuencia del compactador
   else if (strcmp(command, "STOP") == 0)     {
     Serial2.println("S0"); // Manda a detener los motores de movilidad al Nano
     stopBrush();           // Detiene el cepillo si está activo
-    stopCompactor();       // Detiene el compactador si está activo
+    stopCompactorMain();   // Detiene el motor principal del compactador
+    stopCompactorAction(); // Detiene el motor de acción del compactador
   }
 
   server.send(200, "application/json", "{\"status\":\"ok\"}");
@@ -100,16 +143,22 @@ void setup() {
   Serial2.begin(9600, SERIAL_8N1, RX2, TX2); // Inicia comunicación con el Nano
 
   // Configurar pines de los motores adicionales como OUTPUT
-  pinMode(COMPACTOR_IN1, OUTPUT);
-  pinMode(COMPACTOR_IN2, OUTPUT);
-  pinMode(COMPACTOR_ENA, OUTPUT);
+  pinMode(COMPACTOR_MAIN_IN1, OUTPUT);
+  pinMode(COMPACTOR_MAIN_IN2, OUTPUT);
+  pinMode(COMPACTOR_MAIN_ENA, OUTPUT);
+
+  pinMode(COMPACTOR_ACTION_IN1, OUTPUT);
+  pinMode(COMPACTOR_ACTION_IN2, OUTPUT);
+  pinMode(COMPACTOR_ACTION_ENA, OUTPUT);
+
   pinMode(BRUSH_IN1, OUTPUT);
   pinMode(BRUSH_IN2, OUTPUT);
   pinMode(BRUSH_ENB, OUTPUT);
 
-  // Asegurarse de que los motores adicionales estén apagados al inicio
+  // Asegurarse de que todos los motores adicionales estén apagados al inicio
   stopBrush();
-  stopCompactor();
+  stopCompactorMain();
+  stopCompactorAction();
 
   // Conectar a WiFi
   Serial.print("Conectando a WiFi...");
