@@ -1,6 +1,4 @@
 #include <WiFi.h>
-#include <WebServer.h>
-#include <ArduinoJson.h>
 
 // Configuración WiFi
 const char* ssid = "GRATITUD";
@@ -48,9 +46,7 @@ IPAddress primaryDNS(192, 168, 0, 1);
 // LED integrado
 #define LED_BUILTIN 2 
 
-WebServer server(80);
-
-// Servidor Telnet para depuración y control (re-habilitado para entrada)
+// Servidor Telnet para depuración y control
 const int TELNET_PORT = 23; // Puerto estándar de Telnet
 WiFiServer telnetServer(TELNET_PORT);
 WiFiClient telnetClient;
@@ -59,7 +55,7 @@ WiFiClient telnetClient;
 #define RX2 16
 #define TX2 17
 
-uint8_t currentSpeed = 85; // Renombrado de 'speed' a 'currentSpeed' para evitar conflicto con variables locales
+uint8_t currentSpeed = 85; // Velocidad predeterminada para el movimiento del robot
 
 // Estado del sistema
 enum SystemState {
@@ -87,8 +83,7 @@ const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compu
 unsigned long collectorTimerStart = 0;
 
 // Prototipos
-void handleCommand();
-void executeMovement(String command);
+void executeCommand(String command); // Función unificada para ejecutar comandos
 void stopMotors();
 void moveForward();
 void turnLeft();
@@ -103,8 +98,9 @@ void writeServoAngle(int pin, int channel, int angle);
 void checkWiFiConnection();
 void telnetPrintln(const String& msg);
 void telnetPrint(const String& msg);
-void processTelnetInput(); // Nuevo prototipo para manejar entrada Telnet
-void processSerial2Input(); // Nuevo prototipo para manejar entrada Serial2 (desde Nano)
+void processTelnetInput(); // Para manejar entrada Telnet
+void processSerialInput(); // Para manejar entrada Serial USB (desde PC)
+void processSerial2Input(); // Para manejar entrada Serial2 (desde Nano)
 
 // Temporizador para mensajes de WiFi
 unsigned long lastWiFiStatusPrint = 0;
@@ -186,11 +182,6 @@ void setup() {
     digitalWrite(LED_BUILTIN, HIGH); // LED encendido si no se conecta
   }
 
-  // Servidor web
-  server.on("/command", HTTP_POST, handleCommand);
-  server.begin();
-  Serial.println("Servidor Web iniciado en puerto 80");
-
   // Iniciar servidor Telnet
   telnetServer.begin();
   telnetServer.setNoDelay(true);
@@ -198,7 +189,7 @@ void setup() {
 }
 
 void loop() {
-  server.handleClient(); // Maneja las peticiones del servidor web
+  // server.handleClient(); // Ya no se necesita
   processTimers();       // Procesa los temporizadores para la máquina de estados
   checkWiFiConnection(); // Verifica y reconecta WiFi si es necesario
 
@@ -212,6 +203,7 @@ void loop() {
       telnetClient.println("Comandos para Nano: F,B,L,R,S + [velocidad 0-255] (ej: F200)");
       telnetClient.println("Comando para Nano: E1=activar evasión, E0=desactivar evasión");
       telnetClient.println("Comandos para ESP32: COLLECT, STOP (para recolección/compactación)");
+      telnetClient.println("También puedes usar el Monitor Serial para enviar comandos.");
     } else {
       // Rechazar conexiones adicionales
       WiFiClient newClient = telnetServer.available();
@@ -221,6 +213,7 @@ void loop() {
   }
 
   processTelnetInput();  // Procesa comandos recibidos por Telnet
+  processSerialInput();  // Procesa comandos recibidos por Serial USB
   processSerial2Input(); // Procesa datos recibidos del Nano (Serial2)
 
   // Enviar mensajes en cola a Telnet si han pasado 2 segundos sin entrada por Telnet
@@ -262,36 +255,14 @@ void checkWiFiConnection() {
   }
 }
 
-// Maneja los comandos recibidos por HTTP POST
-void handleCommand() {
-  if (server.hasArg("plain")) {
-    DynamicJsonDocument doc(256);
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      server.send(400, "application/json", "{\"status\":\"error\",\"msg\":\"JSON inválido\"}");
-      telnetPrintln("ERROR: JSON inválido recibido.");
-      return;
-    }
-    String command = doc["command"];
-    telnetPrintln("Comando HTTP recibido: " + command);
-
-    // Ignorar comandos de movimiento si estamos compactando
-    if (systemState == COMPACTING) {
-      server.send(200, "application/json", "{\"status\":\"busy\",\"msg\":\"Compactando. Comando ignorado.\"}", "application/json");
-      telnetPrintln("AVISO: Comando '" + command + "' ignorado, sistema compactando.");
-      return;
-    }
-
-    executeMovement(command); // Ejecuta el comando
-    server.send(200, "application/json", "{\"status\":\"ok\"}", "application/json");
-  } else {
-    server.send(400, "application/json", "{\"status\":\"error\",\"msg\":\"Sin datos en la petición\"}", "application/json");
-    telnetPrintln("ERROR: Petición HTTP sin datos.");
+// Función unificada para ejecutar comandos, ya sea desde Telnet o Serial
+void executeCommand(String command) {
+  // Ignorar comandos de movimiento si estamos compactando
+  if (systemState == COMPACTING) {
+    telnetPrintln("AVISO: Comando '" + command + "' ignorado, sistema compactando.");
+    return;
   }
-}
 
-// Ejecuta los comandos de movimiento y control
-void executeMovement(String command) {
   // Si estamos esperando para compactar (tras STOP con basura pendiente)
   if (systemState == WAITING_FOR_STOP) {
     if (command == "STOP") {
@@ -303,7 +274,6 @@ void executeMovement(String command) {
       telnetPrintln("AVISO: Comando '" + command + "' recibido, cancelando espera de compactación.");
       compactTimerStart = 0;
       systemState = NORMAL; // Volver a estado normal
-      // pendingCompaction se mantiene si el usuario quiere compactar más tarde
     }
   }
 
@@ -344,17 +314,16 @@ void executeMovement(String command) {
     collectorTimerStart = millis();
     pendingCompaction = true; // Marcar que hay basura pendiente
     telnetPrintln("Iniciando recolección. Basura marcada como pendiente.");
-  } else if (command.startsWith("EVASION_")) { // Nuevo comando para evasión
-    uint8_t enable = (command == "EVASION_ON") ? 1 : 0;
+  } else if (command.startsWith("E")) { // Comando de evasión (E1, E0)
+    uint8_t enable = (command.length() > 1 && command[1] == '1') ? 1 : 0;
     Serial2.write('E');
     Serial2.write(enable);
-    telnetClient.printf("Evasion de obstaculos (Nano): %s\n", enable ? "ACTIVADA" : "DESACTIVADA");
-    Serial.printf("Comando Telnet/HTTP: E%d enviado al Nano\n", enable);
+    telnetPrintln("Comando Evasion (Nano): " + String(enable ? "ACTIVADA" : "DESACTIVADA") + " enviado al Nano");
   } else {
     // Si el comando no es reconocido, detener todo
     stopMotors();
     activateCollector(false);
-    telnetPrintln("Comando HTTP desconocido: " + command + ". Deteniendo todo.");
+    telnetPrintln("Comando desconocido: " + command + ". Deteniendo todo.");
   }
 }
 
@@ -574,22 +543,41 @@ void processTelnetInput() {
             currentSpeed = speedToNano; // Actualizar la velocidad global
           }
         }
-      } else if (cmdChar == 'E') { // Comando de evasión
-        uint8_t enable = (input.length() > 1 && input[1] == '1') ? 1 : 0;
-        Serial2.write('E');
-        Serial2.write(enable);
-        telnetClient.printf("Evasion de obstaculos (Nano): %s\n", enable ? "ACTIVADA" : "DESACTIVADA");
-        Serial.printf("Comando Telnet: E%d enviado al Nano\n", enable);
-      } 
-      // Comandos para el ESP32 (recolección, compactación)
-      else if (input == "COLLECT") {
-        executeMovement("COLLECT");
-      } else if (input == "STOP") {
-        executeMovement("STOP");
+      } else { // Otros comandos para el ESP32 o Nano (E, COLLECT, STOP)
+        executeCommand(input); // Usar la función unificada
       }
-      else {
-        telnetClient.print("Comando Telnet desconocido: ");
-        telnetClient.println(input);
+    }
+  }
+}
+
+// Procesa comandos recibidos por Serial USB (desde PC)
+void void processSerialInput() {
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim(); // Eliminar espacios en blanco y saltos de línea
+    Serial.println("Serial input: " + input); // Echo del comando recibido
+
+    if (input.length() > 0) {
+      char cmdChar = toupper(input[0]); // Convertir el primer carácter a mayúscula
+
+      // Comandos para el Nano (movimiento y evasión)
+      if (strchr("FBLRS", cmdChar)) { // Comandos de movimiento
+        if (input.length() <= 1) {
+          Serial.println("Comando Serial inválido: velocidad requerida (ej: F200)");
+        } else {
+          int v = input.substring(1).toInt();
+          if (v < 0 || v > 255) {
+            Serial.println("Comando Serial inválido: velocidad fuera de rango (0-255)");
+          } else {
+            uint8_t speedToNano = v;
+            Serial2.write(cmdChar);
+            Serial2.write(speedToNano);
+            Serial.printf("Enviado al Nano: %c %d\n", cmdChar, speedToNano);
+            currentSpeed = speedToNano; // Actualizar la velocidad global
+          }
+        }
+      } else { // Otros comandos para el ESP32 o Nano (E, COLLECT, STOP)
+        executeCommand(input); // Usar la función unificada
       }
     }
   }
@@ -600,7 +588,6 @@ void processSerial2Input() {
   static String nanoLine = ""; // Buffer para la línea del Nano
   while (Serial2.available()) {
     char c = Serial2.read();
-    // lastNanoData = millis(); // No se usa actualmente, pero podría ser útil para timeouts
 
     if (c == '\n' || c == '\r') {
       if (nanoLine.length() > 0) {
