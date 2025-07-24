@@ -551,7 +551,7 @@ void processTelnetInput() {
 }
 
 // Procesa comandos recibidos por Serial USB (desde PC)
-void void processSerialInput() {
+void processSerialInput() {
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim(); // Eliminar espacios en blanco y saltos de línea
