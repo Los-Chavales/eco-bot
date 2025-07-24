@@ -45,6 +45,9 @@ IPAddress primaryDNS(192, 168, 0, 1);
 #define SERVO3_CHANNEL 5
 #define SERVO4_CHANNEL 2 // Canal para el nuevo servo
 
+// LED integrado
+#define LED_BUILTIN 2 
+
 WebServer server(80);
 
 // Servidor Telnet para depuración
@@ -138,6 +141,9 @@ void setup() {
   ledcAttachPin(SERVO4_PIN, SERVO4_CHANNEL);
   openFrontGate();
 
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+
   // Configurar la dirección IP estática
   if (!WiFi.config(local_IP, gateway, subnet, primaryDNS)) {
     Serial.println("Error al configurar STA Mode con IP estática.");
@@ -163,9 +169,11 @@ void setup() {
     Serial.println(WiFi.localIP());
     Serial.print("Intensidad de señal: ");
     Serial.println(100 + WiFi.RSSI());
+    digitalWrite(LED_BUILTIN, LOW);
   } else {
     Serial.print("No se pudo conectar a WiFi en el inicio. Estado: ");
     Serial.println(WiFi.status());
+    digitalWrite(LED_BUILTIN, HIGH);
   }
 
   // Servidor web
@@ -208,6 +216,7 @@ void checkWiFiConnection() {
   if (WiFi.status() != WL_CONNECTED) {
     unsigned long currentMillis = millis();
     if (currentMillis - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
+      digitalWrite(LED_BUILTIN, HIGH);
       telnetPrint("WiFi desconectado. Estado: ");
       telnetPrintln(String(WiFi.status())); 
       lastWiFiStatusPrint = currentMillis;
@@ -218,6 +227,7 @@ void checkWiFiConnection() {
     WiFi.reconnect();
     delay(500);
   } else {
+    digitalWrite(LED_BUILTIN, LOW);
     // Opcional: Imprimir IP si acaba de conectar o si no se ha impreso en mucho tiempo
     if (lastWiFiStatusPrint == 0 || isWiFiReconnecting || millis() - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
       telnetPrint("WiFi sigue conectado. IP: ");
