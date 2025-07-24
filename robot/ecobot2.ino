@@ -66,10 +66,10 @@ enum SystemState {
   NORMAL,
   COLLECTING,
   WAITING_FOR_STOP,
-  WAITING_FOR_COMPACTOR,
   COMPACTING
 };
 volatile SystemState systemState = NORMAL;
+bool pendingCompaction = false; // NUEVA BANDERA
 
 // Temporizador compactador
 unsigned long compactTimerStart = 0;
@@ -80,7 +80,7 @@ const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de re
 const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
 const unsigned long COMPACTOR_FORWARD_DURATION = 2700; // 4s motor compactador hacia adelante
 const unsigned long COMPACTOR_WAIT_DURATION = 1000;    // 3s de espera entre movimientos del compactador
-const unsigned long COMPACTOR_BACKWARD_DURATION = 2200; // 4s motor compactador hacia atrás
+const unsigned long COMPACTOR_BACKWARD_DURATION = 2500; // 4s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
 
 // Temporizador recolección
@@ -266,25 +266,15 @@ void handleCommand() {
 }
 
 void executeMovement(String command) {
-  // Si estamos esperando STOP tras COLLECT
+  // Si estamos esperando para compactar (tras STOP con basura pendiente)
   if (systemState == WAITING_FOR_STOP) {
     if (command == "STOP") {
-      // Iniciar temporizador para compactador
-      compactTimerStart = millis();
-      systemState = WAITING_FOR_COMPACTOR;
-      stopMotors();
+      // Ya está esperando, ignora STOP repetidos
       return;
     } else {
-      // Cancelar espera si llega otro comando
-      systemState = NORMAL;
-    }
-  }
-
-  // Si estamos esperando activar compactador, cancelar si llega otro comando
-  if (systemState == WAITING_FOR_COMPACTOR) {
-    if (command != "STOP") {
-      systemState = NORMAL;
+      // Cancelar espera, pero NO limpiar pendingCompaction
       compactTimerStart = 0;
+      systemState = NORMAL;
     }
   }
 
@@ -300,12 +290,21 @@ void executeMovement(String command) {
   } else if (command == "STOP") {
     stopMotors();
     activateCollector(false);
+    // Si hay basura pendiente, iniciar espera para compactar
+    if (pendingCompaction) {
+      if (systemState != WAITING_FOR_STOP) {
+        compactTimerStart = millis();
+        systemState = WAITING_FOR_STOP;
+      }
+    }
+    // Si no hay basura pendiente, solo detiene motores
   } else if (command == "COLLECT") {
     stopMotors();
     activateCollector(true);
     // Iniciar proceso de recolección no bloqueante
     systemState = COLLECTING;
     collectorTimerStart = millis();
+    pendingCompaction = true; // Marcar que hay basura pendiente
   } else {
     stopMotors();
     activateCollector(false);
@@ -405,13 +404,12 @@ void processTimers() {
     activateCollector(true);
     if (millis() - collectorTimerStart >= COLLECTOR_DURATION) {
       activateCollector(false);
-      systemState = WAITING_FOR_STOP;
-      // Reiniciar temporizador de compactación aquí si es necesario, o se hará en WAITING_FOR_STOP
+      systemState = NORMAL; // Ya no pasa a WAITING_FOR_STOP
     }
   }
 
-  // Esperando para activar compactador
-  if (systemState == WAITING_FOR_COMPACTOR && compactTimerStart > 0) {
+  // Esperando para activar compactador en estado WAITING_FOR_STOP
+  if (systemState == WAITING_FOR_STOP && compactTimerStart > 0) {
     if (millis() - compactTimerStart >= compactDelay) {
       // Iniciar compactador
       systemState = COMPACTING;
@@ -419,6 +417,7 @@ void processTimers() {
       compactorStep = 0;
       compactorStepStart = millis();
       closeFrontGate();
+      compactTimerStart = 0;
     }
   }
 
@@ -462,6 +461,7 @@ void processTimers() {
           compactorStarted = false;
           compactorStep = 0;
           compactTimerStart = 0;
+          pendingCompaction = false; // Limpiar bandera tras compactar
         }
         break;
     }
