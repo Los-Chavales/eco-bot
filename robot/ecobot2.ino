@@ -13,12 +13,12 @@ IPAddress subnet(255, 255, 255, 0);
 IPAddress primaryDNS(192, 168, 0, 1);
 
 // Pines del nuevo L298N (compactador/recolección)
-#define NEW_IN1   14   // Motor A (compactador)
-#define NEW_IN2   12
-#define NEW_ENA   13   // PWM Motor A
-#define NEW_IN3   26   // Motor B (recolección)
-#define NEW_IN4   25
-#define NEW_ENB   33   // PWM Motor B
+#define NEW_IN1  14   // Motor A (compactador)
+#define NEW_IN2  12
+#define NEW_ENA  13  // PWM Motor A
+#define NEW_IN3  26  // Motor B (recolección)
+#define NEW_IN4  25
+#define NEW_ENB  33  // PWM Motor B
 
 // Pines de servos compuerta frontal
 #define SERVO1_PIN 19
@@ -31,8 +31,8 @@ IPAddress primaryDNS(192, 168, 0, 1);
 #define NEW_PWM_CHANNEL_A  0
 #define NEW_PWM_CHANNEL_B  1
 #define NEW_PWM_RESOLUTION 8
-#define COLLECTOR_SPEED    190       // 100% para recolección (ajustado a 8-bit, 255 es 100%)
-#define COMPACTOR_SPEED    195       // 75% para compactador (255*0.75, ajustado a 8-bit)
+#define COLLECTOR_SPEED 190      // 100% para recolección
+#define COMPACTOR_SPEED 195      // 75% para compactador (255*0.75)
 
 // PWM para Servos
 #define SERVO_PWM_FREQ       50      // Frecuencia de 50Hz para servos
@@ -176,9 +176,9 @@ void setup() {
     Serial.println(ssid);
     Serial.print("Dirección IP: ");
     Serial.println(WiFi.localIP());
-    Serial.print("Intensidad de señal (RSSI): ");
-    Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
+    Serial.print("Intensidad de señal: ");
+    Serial.print(100 + WiFi.RSSI());
+    Serial.println("%");
     digitalWrite(LED_BUILTIN, LOW); // LED apagado cuando conectado
   } else {
     Serial.print("No se pudo conectar a WiFi en el inicio. Estado: ");
@@ -245,6 +245,7 @@ void checkWiFiConnection() {
       WiFi.reconnect();
       lastWiFiStatusPrint = currentMillis; // Reiniciar el temporizador para el estado de WiFi
     } else if (currentMillis - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
+      digitalWrite(LED_BUILTIN, HIGH);
       telnetPrint("WiFi reconectando... Estado: ");
       telnetPrintln(String(WiFi.status())); 
       lastWiFiStatusPrint = currentMillis;
@@ -313,11 +314,11 @@ void executeMovement(String command) {
     activateCollector(false); // Detener recolección al moverse
     telnetPrintln("Enviando F al Nano.");
   } else if (command == "LEFT") {
-    turnLeft();
+    turnRight();
     activateCollector(false);
     telnetPrintln("Enviando L al Nano.");
   } else if (command == "RIGHT") {
-    turnRight();
+    turnLeft();
     activateCollector(false);
     telnetPrintln("Enviando R al Nano.");
   } else if (command == "STOP") {
@@ -422,17 +423,17 @@ void stopCompactorMotor() {
 // Servos compuerta frontal
 void openFrontGate() {
   telnetPrintln("Abriendo compuerta frontal...");
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   // Ajustar ángulos según tu configuración física
-  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170);
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100);
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 180);
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   // Servo compuerta lado derecho
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170); // Servo compuerta lado izquierdo
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100); // Servo seguro compuerta lado derecho
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 180); // Servo compuerta frontal (compatador)
   delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal ABIERTA.");
 }
 
 void closeFrontGate() {
   telnetPrintln("Cerrando compuerta frontal...");
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100); // Ajustar ángulos según tu configuración física
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100);
   writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);
   writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180);
   writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 40);
