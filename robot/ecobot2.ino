@@ -3,8 +3,8 @@
 #include <ArduinoJson.h>
 
 // Configuración WiFi
-const char* ssid = "GRATITUD";
-const char* password = "gracias11";
+const char* ssid = "snowden";
+const char* password = "qwertyasdfghzxcvb54321";
 
 // Configuración de IP Fija
 IPAddress local_IP(192, 168, 0, 115);
@@ -278,15 +278,15 @@ void handleCommand() {
 
     // Ignorar comandos de movimiento si estamos compactando
     if (systemState == COMPACTING) {
-      server.send(200, "application/json", "{\"status\":\"busy\",\"msg\":\"Compactando. Comando ignorado.\"}", "application/json");
+      server.send(200, "application/json", "{\"status\":\"busy\",\"msg\":\"Compactando. Comando ignorado.\"}");
       telnetPrintln("AVISO: Comando '" + command + "' ignorado, sistema compactando.");
       return;
     }
 
     executeMovement(command); // Ejecuta el comando
-    server.send(200, "application/json", "{\"status\":\"ok\"}", "application/json");
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
   } else {
-    server.send(400, "application/json", "{\"status\":\"error\",\"msg\":\"Sin datos en la petición\"}", "application/json");
+    server.send(400, "application/json", "{\"status\":\"error\",\"msg\":\"Sin datos en la petición\"}");
     telnetPrintln("ERROR: Petición HTTP sin datos.");
   }
 }
