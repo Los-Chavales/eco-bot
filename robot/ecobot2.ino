@@ -13,26 +13,26 @@ IPAddress subnet(255, 255, 255, 0);
 IPAddress primaryDNS(192, 168, 0, 1);
 
 // Pines del nuevo L298N (compactador/recolección)
-#define NEW_IN1  25   // Motor A (compactador)
-#define NEW_IN2  26
-#define NEW_ENA  33  // PWM Motor A
-#define NEW_IN3  27  // Motor B (recolección)
-#define NEW_IN4  14
-#define NEW_ENB  32  // PWM Motor B
+#define NEW_IN1  14   // Motor A (compactador)
+#define NEW_IN2  12
+#define NEW_ENA  13  // PWM Motor A
+#define NEW_IN3  26  // Motor B (recolección)
+#define NEW_IN4  25
+#define NEW_ENB  33  // PWM Motor B
 
 // Pines de servos compuerta frontal
 #define SERVO1_PIN 19
 #define SERVO2_PIN 18
 #define SERVO3_PIN 5
-#define SERVO4_PIN 13 // Nuevo servo MG996R
+#define SERVO4_PIN 32 // Nuevo servo MG996R
 
 // PWM para nuevo L298N
 #define NEW_PWM_FREQ     1000
 #define NEW_PWM_CHANNEL_A 0
 #define NEW_PWM_CHANNEL_B 1
 #define NEW_PWM_RESOLUTION 8
-#define COLLECTOR_SPEED 255      // 100% para recolección
-#define COMPACTOR_SPEED 255      // 75% para compactador (255*0.75)
+#define COLLECTOR_SPEED 190      // 100% para recolección
+#define COMPACTOR_SPEED 195      // 75% para compactador (255*0.75)
 
 // PWM para Servos
 #define SERVO_PWM_FREQ 50       // Frecuencia de 50Hz para servos
@@ -56,6 +56,8 @@ WiFiClient telnetClient;
 #define RX2 16
 #define TX2 17
 
+uint8_t speed = 85;
+
 // Estado del sistema
 enum SystemState {
   NORMAL,
@@ -73,9 +75,9 @@ const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de re
 
 // Tiempos del proceso de compactación
 const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
-const unsigned long COMPACTOR_FORWARD_DURATION = 1500; // 4s motor compactador hacia adelante
-const unsigned long COMPACTOR_WAIT_DURATION = 500;    // 3s de espera entre movimientos del compactador
-const unsigned long COMPACTOR_BACKWARD_DURATION = 1600; // 4s motor compactador hacia atrás
+const unsigned long COMPACTOR_FORWARD_DURATION = 2700; // 4s motor compactador hacia adelante
+const unsigned long COMPACTOR_WAIT_DURATION = 1000;    // 3s de espera entre movimientos del compactador
+const unsigned long COMPACTOR_BACKWARD_DURATION = 2200; // 4s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
 
 // Temporizador recolección
@@ -280,10 +282,10 @@ void executeMovement(String command) {
     moveForward();
     activateCollector(false);
   } else if (command == "LEFT") {
-    turnLeft();
+    turnRight();
     activateCollector(false);
   } else if (command == "RIGHT") {
-    turnRight();
+    turnLeft();
     activateCollector(false);
   } else if (command == "STOP") {
     stopMotors();
@@ -302,19 +304,24 @@ void executeMovement(String command) {
 
 // Funciones de movimiento
 void stopMotors() {
-  Serial2.write("S");
+  Serial2.write('S');
+  speed = 0;
+  Serial2.write(speed);
 }
 
 void moveForward() {
-  Serial2.write("F");
+  Serial2.write('F');
+  Serial2.write(speed);
 }
 
 void turnLeft() {
-  Serial2.write("L");
+  Serial2.write('L');
+  Serial2.write(speed);
 }
 
 void turnRight() {
-  Serial2.write("R");
+  Serial2.write('R');
+  Serial2.write(speed);
 }
 
 // Motor de recolección (motor B del nuevo L298N)
@@ -350,17 +357,17 @@ void stopCompactorMotor() {
 
 // Servos compuerta frontal
 void openFrontGate() {
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 90);
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 90);
-  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 90);
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 90);
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170);
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100);
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 180);
 }
 
 void closeFrontGate() {
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 0);
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);
-  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 0);
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 0);
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100);
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180);
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 40);
 }
 
 // Lógica de temporizador y compactador
