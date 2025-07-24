@@ -12,42 +12,27 @@ IPAddress gateway(192, 168, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress primaryDNS(192, 168, 0, 1);
 
-// Pines del L298N original (desplazamiento)
-#define IN1  23  // Motor A
-#define IN2  22
-#define IN3  17  // Motor B
-#define IN4  16
-#define ENA  21  // PWM Motor A
-#define ENB  4  // PWM Motor B
-
 // Pines del nuevo L298N (compactador/recolección)
-#define NEW_IN1  25   // Motor A (compactador)
-#define NEW_IN2  26
-#define NEW_ENA  33  // PWM Motor A
-#define NEW_IN3  27  // Motor B (recolección)
-#define NEW_IN4  14
-#define NEW_ENB  32  // PWM Motor B
+#define NEW_IN1  14   // Motor A (compactador)
+#define NEW_IN2  12
+#define NEW_ENA  13  // PWM Motor A
+#define NEW_IN3  26  // Motor B (recolección)
+#define NEW_IN4  25
+#define NEW_ENB  33  // PWM Motor B
 
 // Pines de servos compuerta frontal
 #define SERVO1_PIN 19
 #define SERVO2_PIN 18
 #define SERVO3_PIN 5
-#define SERVO4_PIN 13 // Nuevo servo MG996R
-
-// PWM
-#define PWM_FREQ     1000
-#define PWM_CHANNEL_A 0
-#define PWM_CHANNEL_B 1
-#define PWM_RESOLUTION 8
-#define MOTOR_SPEED 130  // 0-255
+#define SERVO4_PIN 32 // Nuevo servo MG996R
 
 // PWM para nuevo L298N
 #define NEW_PWM_FREQ     1000
-#define NEW_PWM_CHANNEL_A 2
-#define NEW_PWM_CHANNEL_B 3
+#define NEW_PWM_CHANNEL_A 0
+#define NEW_PWM_CHANNEL_B 1
 #define NEW_PWM_RESOLUTION 8
-#define COLLECTOR_SPEED 255      // 100% para recolección
-#define COMPACTOR_SPEED 191      // 75% para compactador (255*0.75)
+#define COLLECTOR_SPEED 190      // 100% para recolección
+#define COMPACTOR_SPEED 195      // 75% para compactador (255*0.75)
 
 // PWM para Servos
 #define SERVO_PWM_FREQ 50       // Frecuencia de 50Hz para servos
@@ -55,10 +40,13 @@ IPAddress primaryDNS(192, 168, 0, 1);
 #define SERVO_MIN_PULSE_US 500  // 500us para 0 grados
 #define SERVO_MAX_PULSE_US 2500 // 2500us para 180 grados
 
-#define SERVO1_CHANNEL 4
-#define SERVO2_CHANNEL 5
-#define SERVO3_CHANNEL 6
-#define SERVO4_CHANNEL 7 // Canal para el nuevo servo
+#define SERVO1_CHANNEL 3
+#define SERVO2_CHANNEL 4
+#define SERVO3_CHANNEL 5
+#define SERVO4_CHANNEL 2 // Canal para el nuevo servo
+
+// LED integrado
+#define LED_BUILTIN 2 
 
 WebServer server(80);
 
@@ -67,17 +55,21 @@ const int TELNET_PORT = 23; // Puerto estándar de Telnet
 WiFiServer telnetServer(TELNET_PORT);
 WiFiClient telnetClient;
 
-// No se necesitan objetos Servo de la librería ESP32Servo.h
+// Serial2: TX2=GPIO17 → RX del Nano, RX2=GPIO16 ← TX del Nano
+#define RX2 16
+#define TX2 17
+
+uint8_t speed = 85;
 
 // Estado del sistema
 enum SystemState {
   NORMAL,
   COLLECTING,
   WAITING_FOR_STOP,
-  WAITING_FOR_COMPACTOR,
   COMPACTING
 };
 volatile SystemState systemState = NORMAL;
+bool pendingCompaction = false; // NUEVA BANDERA
 
 // Temporizador compactador
 unsigned long compactTimerStart = 0;
@@ -86,9 +78,9 @@ const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de re
 
 // Tiempos del proceso de compactación
 const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
-const unsigned long COMPACTOR_FORWARD_DURATION = 4000; // 4s motor compactador hacia adelante
-const unsigned long COMPACTOR_WAIT_DURATION = 3000;    // 3s de espera entre movimientos del compactador
-const unsigned long COMPACTOR_BACKWARD_DURATION = 4000; // 4s motor compactador hacia atrás
+const unsigned long COMPACTOR_FORWARD_DURATION = 2700; // 4s motor compactador hacia adelante
+const unsigned long COMPACTOR_WAIT_DURATION = 1000;    // 3s de espera entre movimientos del compactador
+const unsigned long COMPACTOR_BACKWARD_DURATION = 2500; // 4s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
 
 // Temporizador recolección
@@ -119,18 +111,7 @@ bool isWiFiReconnecting = false;
 
 void setup() {
   Serial.begin(115200);
-
-  // Configurar pines de motores
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
-
-  // PWM para velocidad de motores
-  ledcSetup(PWM_CHANNEL_A, PWM_FREQ, PWM_RESOLUTION);
-  ledcSetup(PWM_CHANNEL_B, PWM_FREQ, PWM_RESOLUTION);
-  ledcAttachPin(ENA, PWM_CHANNEL_A);
-  ledcAttachPin(ENB, PWM_CHANNEL_B);
+  Serial2.begin(9600, SERIAL_8N1, RX2, TX2);
 
   // Configurar pines del nuevo L298N
   pinMode(NEW_IN1, OUTPUT);
@@ -138,7 +119,7 @@ void setup() {
   pinMode(NEW_IN3, OUTPUT);
   pinMode(NEW_IN4, OUTPUT);
 
-  // PWM para nuevo L298N
+  // PWM para velocidad de motores del nuevo L298N
   ledcSetup(NEW_PWM_CHANNEL_A, NEW_PWM_FREQ, NEW_PWM_RESOLUTION);
   ledcSetup(NEW_PWM_CHANNEL_B, NEW_PWM_FREQ, NEW_PWM_RESOLUTION);
   ledcAttachPin(NEW_ENA, NEW_PWM_CHANNEL_A);
@@ -159,6 +140,9 @@ void setup() {
   ledcSetup(SERVO4_CHANNEL, SERVO_PWM_FREQ, SERVO_PWM_RESOLUTION);
   ledcAttachPin(SERVO4_PIN, SERVO4_CHANNEL);
   openFrontGate();
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
 
   // Configurar la dirección IP estática
   if (!WiFi.config(local_IP, gateway, subnet, primaryDNS)) {
@@ -185,9 +169,11 @@ void setup() {
     Serial.println(WiFi.localIP());
     Serial.print("Intensidad de señal: ");
     Serial.println(100 + WiFi.RSSI());
+    digitalWrite(LED_BUILTIN, LOW);
   } else {
     Serial.print("No se pudo conectar a WiFi en el inicio. Estado: ");
     Serial.println(WiFi.status());
+    digitalWrite(LED_BUILTIN, HIGH);
   }
 
   // Servidor web
@@ -230,6 +216,7 @@ void checkWiFiConnection() {
   if (WiFi.status() != WL_CONNECTED) {
     unsigned long currentMillis = millis();
     if (currentMillis - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
+      digitalWrite(LED_BUILTIN, HIGH);
       telnetPrint("WiFi desconectado. Estado: ");
       telnetPrintln(String(WiFi.status())); 
       lastWiFiStatusPrint = currentMillis;
@@ -240,6 +227,7 @@ void checkWiFiConnection() {
     WiFi.reconnect();
     delay(500);
   } else {
+    digitalWrite(LED_BUILTIN, LOW);
     // Opcional: Imprimir IP si acaba de conectar o si no se ha impreso en mucho tiempo
     if (lastWiFiStatusPrint == 0 || isWiFiReconnecting || millis() - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
       telnetPrint("WiFi sigue conectado. IP: ");
@@ -278,25 +266,15 @@ void handleCommand() {
 }
 
 void executeMovement(String command) {
-  // Si estamos esperando STOP tras COLLECT
+  // Si estamos esperando para compactar (tras STOP con basura pendiente)
   if (systemState == WAITING_FOR_STOP) {
     if (command == "STOP") {
-      // Iniciar temporizador para compactador
-      compactTimerStart = millis();
-      systemState = WAITING_FOR_COMPACTOR;
-      stopMotors();
+      // Ya está esperando, ignora STOP repetidos
       return;
     } else {
-      // Cancelar espera si llega otro comando
-      systemState = NORMAL;
-    }
-  }
-
-  // Si estamos esperando activar compactador, cancelar si llega otro comando
-  if (systemState == WAITING_FOR_COMPACTOR) {
-    if (command != "STOP") {
-      systemState = NORMAL;
+      // Cancelar espera, pero NO limpiar pendingCompaction
       compactTimerStart = 0;
+      systemState = NORMAL;
     }
   }
 
@@ -304,20 +282,29 @@ void executeMovement(String command) {
     moveForward();
     activateCollector(false);
   } else if (command == "LEFT") {
-    turnLeft();
+    turnRight();
     activateCollector(false);
   } else if (command == "RIGHT") {
-    turnRight();
+    turnLeft();
     activateCollector(false);
   } else if (command == "STOP") {
     stopMotors();
     activateCollector(false);
+    // Si hay basura pendiente, iniciar espera para compactar
+    if (pendingCompaction) {
+      if (systemState != WAITING_FOR_STOP) {
+        compactTimerStart = millis();
+        systemState = WAITING_FOR_STOP;
+      }
+    }
+    // Si no hay basura pendiente, solo detiene motores
   } else if (command == "COLLECT") {
     stopMotors();
     activateCollector(true);
     // Iniciar proceso de recolección no bloqueante
     systemState = COLLECTING;
     collectorTimerStart = millis();
+    pendingCompaction = true; // Marcar que hay basura pendiente
   } else {
     stopMotors();
     activateCollector(false);
@@ -326,39 +313,24 @@ void executeMovement(String command) {
 
 // Funciones de movimiento
 void stopMotors() {
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, LOW);
-  ledcWrite(PWM_CHANNEL_A, 0);
-  ledcWrite(PWM_CHANNEL_B, 0);
+  Serial2.write('S');
+  speed = 0;
+  Serial2.write(speed);
 }
 
 void moveForward() {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-  ledcWrite(PWM_CHANNEL_A, MOTOR_SPEED);
-  ledcWrite(PWM_CHANNEL_B, MOTOR_SPEED);
+  Serial2.write('F');
+  Serial2.write(speed);
 }
 
 void turnLeft() {
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, HIGH);
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-  ledcWrite(PWM_CHANNEL_A, MOTOR_SPEED);
-  ledcWrite(PWM_CHANNEL_B, MOTOR_SPEED);
+  Serial2.write('L');
+  Serial2.write(speed);
 }
 
 void turnRight() {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, HIGH);
-  ledcWrite(PWM_CHANNEL_A, MOTOR_SPEED);
-  ledcWrite(PWM_CHANNEL_B, MOTOR_SPEED);
+  Serial2.write('R');
+  Serial2.write(speed);
 }
 
 // Motor de recolección (motor B del nuevo L298N)
@@ -394,17 +366,17 @@ void stopCompactorMotor() {
 
 // Servos compuerta frontal
 void openFrontGate() {
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 90);
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 90);
-  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 90);
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 90);
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170);
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100);
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 180);
 }
 
 void closeFrontGate() {
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 0);
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);
-  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 0);
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 0);
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100);
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180);
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 40);
 }
 
 // Lógica de temporizador y compactador
@@ -432,13 +404,12 @@ void processTimers() {
     activateCollector(true);
     if (millis() - collectorTimerStart >= COLLECTOR_DURATION) {
       activateCollector(false);
-      systemState = WAITING_FOR_STOP;
-      // Reiniciar temporizador de compactación aquí si es necesario, o se hará en WAITING_FOR_STOP
+      systemState = NORMAL; // Ya no pasa a WAITING_FOR_STOP
     }
   }
 
-  // Esperando para activar compactador
-  if (systemState == WAITING_FOR_COMPACTOR && compactTimerStart > 0) {
+  // Esperando para activar compactador en estado WAITING_FOR_STOP
+  if (systemState == WAITING_FOR_STOP && compactTimerStart > 0) {
     if (millis() - compactTimerStart >= compactDelay) {
       // Iniciar compactador
       systemState = COMPACTING;
@@ -446,6 +417,7 @@ void processTimers() {
       compactorStep = 0;
       compactorStepStart = millis();
       closeFrontGate();
+      compactTimerStart = 0;
     }
   }
 
@@ -489,6 +461,7 @@ void processTimers() {
           compactorStarted = false;
           compactorStep = 0;
           compactTimerStart = 0;
+          pendingCompaction = false; // Limpiar bandera tras compactar
         }
         break;
     }
