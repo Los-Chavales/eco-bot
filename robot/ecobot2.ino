@@ -59,8 +59,8 @@ WiFiClient telnetClient;
 #define RX2 16
 #define TX2 17
 
-uint8_t currentSpeed = 68; // Para avanzar y retroceder
-uint8_t currentSpeed2 = 120; // Para girar
+uint8_t currentSpeed = 55; // Para avanzar y retroceder
+uint8_t currentSpeed2 = 125; // Para girar
 
 // Estado del sistema
 enum SystemState {
@@ -79,9 +79,9 @@ const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de re
 
 // Tiempos del proceso de compactación
 const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
-const unsigned long COMPACTOR_FORWARD_DURATION = 2800; // 2.7s motor compactador hacia adelante
+const unsigned long COMPACTOR_FORWARD_DURATION = 2850; // 2.7s motor compactador hacia adelante
 const unsigned long COMPACTOR_WAIT_DURATION = 1000;    // 1s de espera entre movimientos del compactador
-const unsigned long COMPACTOR_BACKWARD_DURATION = 2550; // 2.5s motor compactador hacia atrás
+const unsigned long COMPACTOR_BACKWARD_DURATION = 2600; // 2.5s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
 
 // Temporizador recolección
@@ -147,6 +147,7 @@ void setup() {
   ledcSetup(SERVO4_CHANNEL, SERVO_PWM_FREQ, SERVO_PWM_RESOLUTION);
   ledcAttachPin(SERVO4_PIN, SERVO4_CHANNEL);
   openFrontGate(); // Abrir compuerta al inicio
+  closeBackGate(); // Cerrar compuerta trasera al inicio
 
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH); // LED encendido mientras conecta a WiFi
@@ -433,7 +434,7 @@ void stopCompactorMotor() {
 // Servos compuerta frontal
 void openFrontGate() {
   telnetPrintln("Abriendo compuerta frontal...");
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 180); // Servo compuerta frontal (compatador)
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 180); // Servo compuerta frontal (compactador)
   delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal ABIERTA.");
 }
@@ -445,8 +446,7 @@ void closeFrontGate() {
   telnetPrintln("Compuerta frontal CERRADA.");
 }
 
-// Servos compuerta de atrás 
-
+// Servos compuerta trasera
 void openBackGate() {
   telnetPrintln("Abriendo compuerta frontal...");
   writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   // Servo compuerta lado derecho
