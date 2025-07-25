@@ -31,8 +31,8 @@ IPAddress primaryDNS(192, 168, 0, 1);
 #define NEW_PWM_CHANNEL_A  0
 #define NEW_PWM_CHANNEL_B  1
 #define NEW_PWM_RESOLUTION 8
-#define COLLECTOR_SPEED 190
-#define COMPACTOR_SPEED 220
+#define COLLECTOR_SPEED 210
+#define COMPACTOR_SPEED 240
 
 // PWM para Servos
 #define SERVO_PWM_FREQ       50      // Frecuencia de 50Hz para servos
@@ -80,15 +80,15 @@ const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de re
 
 // Tiempos del proceso de compactación
 const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
-const unsigned long COMPACTOR_FORWARD_DURATION = 3250; // 2.7s motor compactador hacia adelante
+const unsigned long COMPACTOR_FORWARD_DURATION = 3350; // 2.7s motor compactador hacia adelante
 const unsigned long COMPACTOR_WAIT_DURATION = 1000;    // 1s de espera entre movimientos del compactador
-const unsigned long COMPACTOR_BACKWARD_DURATION = 2650; // 2.5s motor compactador hacia atrás
+const unsigned long COMPACTOR_BACKWARD_DURATION = 2200; // 2.5s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
 
 // Tiempos del proceso de expulsión
 const unsigned long EJECT_OPEN_BACK_GATE_DELAY = 750;
-const unsigned long EJECT_COMPACTOR_FORWARD_DURATION = 3250;
-const unsigned long EJECT_COMPACTOR_BACKWARD_DURATION = 2650;
+const unsigned long EJECT_COMPACTOR_FORWARD_DURATION = 3300;
+const unsigned long EJECT_COMPACTOR_BACKWARD_DURATION = 2250;
 const unsigned long EJECT_CLOSE_BACK_GATE_DELAY = 600;
 
 // Temporizador recolección
@@ -456,7 +456,7 @@ void openFrontGate() {
 
 void closeFrontGate() {
   telnetPrintln("Cerrando compuerta frontal...");
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 50);
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 65);
   telnetPrintln("Compuerta frontal CERRADA.");
 }
 
@@ -475,7 +475,7 @@ void closeBackGate() {
   writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   
   writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170); 
   delay(EJECT_CLOSE_BACK_GATE_DELAY); // Delay para que se cierre la compuerta primero
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 90);
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 110);
   telnetPrintln("Compuerta trasera CERRADA.");
 }
 
