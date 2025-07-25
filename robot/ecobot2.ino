@@ -67,7 +67,8 @@ enum SystemState {
   NORMAL,
   COLLECTING,
   WAITING_FOR_STOP,
-  COMPACTING
+  COMPACTING,
+  EJECTING // Nuevo estado para expulsión
 };
 volatile SystemState systemState = NORMAL;
 bool pendingCompaction = false; // Bandera para indicar si hay basura pendiente de compactación
@@ -83,6 +84,12 @@ const unsigned long COMPACTOR_FORWARD_DURATION = 3250; // 2.7s motor compactador
 const unsigned long COMPACTOR_WAIT_DURATION = 1000;    // 1s de espera entre movimientos del compactador
 const unsigned long COMPACTOR_BACKWARD_DURATION = 2650; // 2.5s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
+
+// Tiempos del proceso de expulsión
+const unsigned long EJECT_OPEN_BACK_GATE_DELAY = 750;
+const unsigned long EJECT_COMPACTOR_FORWARD_DURATION = 3250;
+const unsigned long EJECT_COMPACTOR_BACKWARD_DURATION = 2650;
+const unsigned long EJECT_CLOSE_BACK_GATE_DELAY = 600;
 
 // Temporizador recolección
 unsigned long collectorTimerStart = 0;
@@ -362,6 +369,15 @@ void executeMovement(String command) {
     Serial2.write(enable);
     telnetClient.printf("Evasion de obstaculos (Nano): %s\n", enable ? "ACTIVADA" : "DESACTIVADA");
     Serial.printf("Comando Telnet/HTTP: E%d enviado al Nano\n", enable);
+  } else if (command == "PUSH") {
+    if (systemState == COMPACTING || systemState == EJECTING) {
+      telnetPrintln("AVISO: Sistema ocupado, comando PUSH ignorado.");
+      return;
+    }
+    systemState = EJECTING;
+    telnetPrintln("Iniciando proceso de expulsión de basura...");
+    // El proceso se maneja en processTimers
+    return;
   } else {
     // Si el comando no es reconocido, detener todo
     stopMotors();
@@ -451,7 +467,6 @@ void openBackGate() {
   delay(750); // Delay para que se abra el seguro primero
   writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100); // Servo compuerta lado derecho
   writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);  // Servo compuerta lado izquierdo
-  delay(COMPACTOR_OPEN_GATE_DELAY); // Delay para que los servos se muevan
   telnetPrintln("Compuerta trasera ABIERTA.");
 }
 
@@ -459,9 +474,8 @@ void closeBackGate() {
   telnetPrintln("Cerrando compuerta trasera...");
   writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   
   writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170); 
-  delay(COMPACTOR_CLOSE_GATE_DELAY); // Delay para que se cierre la compuerta primero
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100); 
-  delay(100); // Pequeño delay para que los servos se muevan
+  delay(EJECT_CLOSE_BACK_GATE_DELAY); // Delay para que se cierre la compuerta primero
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 90);
   telnetPrintln("Compuerta trasera CERRADA.");
 }
 
@@ -479,6 +493,11 @@ void processTimers() {
   static bool compactorStarted = false;
   static unsigned long compactorStepStart = 0;
   static int compactorStep = 0;
+
+  // Máquina de estados para expulsión de basura
+  static bool ejectStarted = false;
+  static unsigned long ejectStepStart = 0;
+  static int ejectStep = 0;
 
   unsigned long now = millis();
 
@@ -554,6 +573,70 @@ void processTimers() {
         break;
     }
   }
+
+  // Proceso de expulsión de basura
+  if (systemState == EJECTING) {
+    if (!ejectStarted) {
+      ejectStarted = true;
+      ejectStep = 0;
+      ejectStepStart = now;
+      telnetPrintln("EJECT Paso 0: Abriendo compuerta trasera...");
+      openBackGate();
+    }
+    switch (ejectStep) {
+      case 0: // Esperar a que abra compuerta trasera
+        if (now - ejectStepStart > EJECT_OPEN_BACK_GATE_DELAY) {
+          telnetPrintln("EJECT Paso 1: Cerrando compuerta frontal...");
+          closeFrontGate();
+          ejectStepStart = now;
+          ejectStep = 1;
+        }
+        break;
+      case 1: // Esperar a que cierre compuerta frontal
+        if (now - ejectStepStart > COMPACTOR_CLOSE_GATE_DELAY) {
+          telnetPrintln("EJECT Paso 2: Activando compactador ADELANTE para expulsar...");
+          runCompactorMotor(true, COMPACTOR_SPEED); // Adelante (expulsar)
+          ejectStepStart = now;
+          ejectStep = 2;
+        }
+        break;
+      case 2: // Compactador expulsando (adelante)
+        if (now - ejectStepStart > EJECT_COMPACTOR_FORWARD_DURATION) {
+          stopCompactorMotor();
+          telnetPrintln("EJECT Paso 3: Regresando compactador ATRÁS...");
+          runCompactorMotor(false, COMPACTOR_SPEED); // Atrás (regresar)
+          ejectStepStart = now;
+          ejectStep = 3;
+        }
+        break;
+      case 3: // Compactador regresando (atrás)
+        if (now - ejectStepStart > EJECT_COMPACTOR_BACKWARD_DURATION) {
+          stopCompactorMotor();
+          telnetPrintln("EJECT Paso 4: Abriendo compuerta frontal...");
+          openFrontGate();
+          ejectStepStart = now;
+          ejectStep = 4;
+        }
+        break;
+      case 4: // Esperar a que abra compuerta frontal
+        if (now - ejectStepStart > COMPACTOR_OPEN_GATE_DELAY) {
+          telnetPrintln("EJECT Paso 5: Cerrando compuerta trasera...");
+          closeBackGate();
+          ejectStepStart = now;
+          ejectStep = 5;
+        }
+        break;
+      case 5: // Esperar a que cierre compuerta trasera y finalizar
+        if (now - ejectStepStart > EJECT_CLOSE_BACK_GATE_DELAY) {
+          telnetPrintln("Proceso de expulsión FINALIZADO. Sistema en NORMAL.");
+          systemState = NORMAL;
+          ejectStarted = false;
+          ejectStep = 0;
+        }
+        break;
+    }
+    return; // No procesar otros estados mientras se expulsa
+  }
 }
 
 // Función para enviar mensajes a Serial y Telnet
@@ -617,6 +700,14 @@ void processTelnetInput() {
       } else if (input == "CLOSEB") { // Comando Telnet para cerrar compuerta trasera
         closeBackGate();
         telnetClient.println("Compuerta trasera cerrada.");
+      } else if (input == "PUSH") {
+        if (systemState == COMPACTING || systemState == EJECTING) {
+          telnetPrintln("AVISO: Sistema ocupado, comando PUSH ignorado.");
+          return;
+        }
+        systemState = EJECTING;
+        telnetPrintln("Iniciando proceso de expulsión de basura...");
+        return;
       } else {
         telnetClient.print("Comando Telnet desconocido: ");
         telnetClient.println(input);
