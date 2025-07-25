@@ -215,7 +215,7 @@ void loop() {
       telnetClient.println("Bienvenido al depurador Telnet del EcoBot!");
       telnetClient.println("Comandos para Nano: F,B,L,R,S + [velocidad 0-255] (ej: F200)");
       telnetClient.println("Comando para Nano: E1=activar evasión, E0=desactivar evasión");
-      telnetClient.println("Comandos para ESP32: COLLECT, STOP (para recolección/compactación)");
+      telnetClient.println("Comandos para ESP32: COLLECT, STOP (para recolección/compactación), OPENB, CLOSEB");
     } else {
       // Rechazar conexiones adicionales
       WiFiClient newClient = telnetServer.available();
@@ -350,10 +350,10 @@ void executeMovement(String command) {
     collectorTimerStart = millis();
     pendingCompaction = true; // Marcar que hay basura pendiente
     telnetPrintln("Iniciando recolección. Basura marcada como pendiente.");
-  } else if (command == "OPEN_BACK") { // Nuevo comando para abrir compuerta trasera
+  } else if (command == "OPENB") { // Nuevo comando para abrir compuerta trasera
     openBackGate();
     telnetPrintln("Comando para abrir compuerta trasera recibido.");
-  } else if (command == "CLOSE_BACK") { // Nuevo comando para cerrar compuerta trasera
+  } else if (command == "CLOSEB") { // Nuevo comando para cerrar compuerta trasera
     closeBackGate();
     telnetPrintln("Comando para cerrar compuerta trasera recibido.");
   } else if (command.startsWith("EVASION_")) { // Nuevo comando para evasión
@@ -435,39 +435,31 @@ void stopCompactorMotor() {
 void openFrontGate() {
   telnetPrintln("Abriendo compuerta frontal...");
   writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 180); // Servo compuerta frontal (compactador)
-  delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal ABIERTA.");
 }
 
 void closeFrontGate() {
   telnetPrintln("Cerrando compuerta frontal...");
   writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 50);
-  delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal CERRADA.");
 }
 
 // Servos compuerta trasera
 void openBackGate() {
   telnetPrintln("Abriendo compuerta trasera...");
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180); // Servo seguro compuerta lado derecho
+  delay(750); // Delay para que se abra el seguro primero
   writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100); // Servo compuerta lado derecho
   writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);  // Servo compuerta lado izquierdo
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180); // Servo seguro compuerta lado derecho
-  
-  delay(100); // Pequeño delay para que los servos se muevan
+  delay(COMPACTOR_OPEN_GATE_DELAY); // Delay para que los servos se muevan
   telnetPrintln("Compuerta trasera ABIERTA.");
-  delay(COMPACTOR_WAIT_DURATION); 
-  runCompactorMotor(true, COMPACTOR_SPEED); // Adelante (compactar)
-  telnetPrintln("Expulsar");
-  delay(COMPACTOR_WAIT_DURATION); 
-  runCompactorMotor(false, COMPACTOR_SPEED); // Atrás (volver a recolectar)
-  stopCompactorMotor();
-  closeBackGate(); // Cerrar compuerta trasera después de expulsar
 }
 
 void closeBackGate() {
   telnetPrintln("Cerrando compuerta trasera...");
   writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   
   writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170); 
+  delay(COMPACTOR_CLOSE_GATE_DELAY); // Delay para que se cierre la compuerta primero
   writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100); 
   delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta trasera CERRADA.");
@@ -619,10 +611,10 @@ void processTelnetInput() {
         executeMovement("COLLECT");
       } else if (input == "STOP") {
         executeMovement("STOP");
-      } else if (input == "OPEN_BACK") { // Comando Telnet para abrir compuerta trasera
+      } else if (input == "OPENB") { // Comando Telnet para abrir compuerta trasera
         openBackGate();
         telnetClient.println("Compuerta trasera abierta.");
-      } else if (input == "CLOSE_BACK") { // Comando Telnet para cerrar compuerta trasera
+      } else if (input == "CLOSEB") { // Comando Telnet para cerrar compuerta trasera
         closeBackGate();
         telnetClient.println("Compuerta trasera cerrada.");
       } else {
