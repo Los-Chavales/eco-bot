@@ -32,7 +32,7 @@ IPAddress primaryDNS(192, 168, 0, 1);
 #define NEW_PWM_CHANNEL_B  1
 #define NEW_PWM_RESOLUTION 8
 #define COLLECTOR_SPEED 190      // 100% para recolección
-#define COMPACTOR_SPEED 195      // 75% para compactador (255*0.75)
+#define COMPACTOR_SPEED 210      // 75% para compactador (255*0.75)
 
 // PWM para Servos
 #define SERVO_PWM_FREQ       50      // Frecuencia de 50Hz para servos
@@ -59,7 +59,8 @@ WiFiClient telnetClient;
 #define RX2 16
 #define TX2 17
 
-uint8_t currentSpeed = 85; // Renombrado de 'speed' a 'currentSpeed' para evitar conflicto con variables locales
+uint8_t currentSpeed = 68; // Para avanzar y retroceder
+uint8_t currentSpeed2 = 120; // Para girar
 
 // Estado del sistema
 enum SystemState {
@@ -78,9 +79,9 @@ const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de re
 
 // Tiempos del proceso de compactación
 const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
-const unsigned long COMPACTOR_FORWARD_DURATION = 2700; // 2.7s motor compactador hacia adelante
+const unsigned long COMPACTOR_FORWARD_DURATION = 2800; // 2.7s motor compactador hacia adelante
 const unsigned long COMPACTOR_WAIT_DURATION = 1000;    // 1s de espera entre movimientos del compactador
-const unsigned long COMPACTOR_BACKWARD_DURATION = 2500; // 2.5s motor compactador hacia atrás
+const unsigned long COMPACTOR_BACKWARD_DURATION = 2550; // 2.5s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
 
 // Temporizador recolección
@@ -176,9 +177,9 @@ void setup() {
     Serial.println(ssid);
     Serial.print("Dirección IP: ");
     Serial.println(WiFi.localIP());
-    Serial.print("Intensidad de señal: ");
-    Serial.print(100 + WiFi.RSSI());
-    Serial.println("%");
+    Serial.print("Intensidad de señal (RSSI): ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
     digitalWrite(LED_BUILTIN, LOW); // LED apagado cuando conectado
   } else {
     Serial.print("No se pudo conectar a WiFi en el inicio. Estado: ");
@@ -255,8 +256,9 @@ void checkWiFiConnection() {
     if (isWiFiReconnecting || currentMillis - lastWiFiStatusPrint >= WIFI_STATUS_INTERVAL) {
       telnetPrint("WiFi conectado. IP: ");
       telnetPrintln(WiFi.localIP().toString());
-      telnetPrint("Intensidad de señal (RSSI): ");
-      telnetPrintln(String(WiFi.RSSI()) + " dBm");
+      telnetPrint("Intensidad de señal: ");
+      telnetPrint(String(100 + WiFi.RSSI()));
+      telnetPrintln("%");
       isWiFiReconnecting = false;
       lastWiFiStatusPrint = currentMillis;
     }
@@ -314,11 +316,11 @@ void executeMovement(String command) {
     activateCollector(false); // Detener recolección al moverse
     telnetPrintln("Enviando F al Nano.");
   } else if (command == "LEFT") {
-    turnRight();
+    turnLeft();
     activateCollector(false);
     telnetPrintln("Enviando L al Nano.");
   } else if (command == "RIGHT") {
-    turnLeft();
+    turnRight();
     activateCollector(false);
     telnetPrintln("Enviando R al Nano.");
   } else if (command == "STOP") {
@@ -373,15 +375,15 @@ void moveForward() {
 }
 
 void turnLeft() {
-  Serial2.write('L');
-  Serial2.write(currentSpeed);
-  telnetPrintln("Comando L" + String(currentSpeed) + " enviado al Nano.");
+  Serial2.write('R');
+  Serial2.write(currentSpeed2);
+  telnetPrintln("Comando L" + String(currentSpeed2) + " enviado al Nano.");
 }
 
 void turnRight() {
-  Serial2.write('R');
-  Serial2.write(currentSpeed);
-  telnetPrintln("Comando R" + String(currentSpeed) + " enviado al Nano.");
+  Serial2.write('L');
+  Serial2.write(currentSpeed2);
+  telnetPrintln("Comando R" + String(currentSpeed2) + " enviado al Nano.");
 }
 
 // Motor de recolección (motor B del nuevo L298N, controlado directamente por ESP32)
@@ -436,7 +438,7 @@ void closeFrontGate() {
   writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100);
   writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);
   writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180);
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 40);
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 50);
   delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal CERRADA.");
 }
