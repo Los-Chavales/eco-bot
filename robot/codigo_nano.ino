@@ -15,8 +15,16 @@
 #define OBSTACLE_DISTANCE_CM 25     // Distancia de detección de obstáculo
 #define OBSTACLE_AVOID_TIME 600     // ms para avanzar/retroceder/girar en evitado
 
+// --- Parámetros de Búsqueda de Desechos (Controlado por Nano) ---
+// Duración del movimiento recto en el modo de búsqueda (1 minuto = 60000 ms)
+const unsigned long SEARCH_STRAIGHT_DURATION = 60000; 
+// Tiempo para girar en el modo de búsqueda (ajusta según sea necesario)
+const unsigned long SEARCH_TURN_DURATION = 1500;   
+
 // --- Variables ---
 bool obstacle_avoidance_enabled = true; // Activado por defecto
+bool searching_for_debris = false;      // Bandera para el modo de búsqueda
+unsigned long search_start_time = 0;    // Tiempo de inicio del segmento de búsqueda
 
 unsigned long lastDistanceSent = 0;
 const unsigned long DISTANCE_SEND_INTERVAL = 500; // ms
@@ -37,8 +45,33 @@ void setup() {
 void loop() {
   // Checa obstáculo si la función está activada
   if (obstacle_avoidance_enabled && detectObstacle(OBSTACLE_DISTANCE_CM)) {
-    avoidObstacle();
-    return;
+    // Si se detecta un obstáculo durante la búsqueda, se detiene la búsqueda
+    if (searching_for_debris) { 
+      Serial.println("Obstaculo detectado durante busqueda!");
+      searching_for_debris = false; // Detiene el modo de búsqueda
+    }
+    avoidObstacle(); // Ejecuta la rutina de evasión de obstáculos
+    return; // Sale del loop para que la evasión no sea interrumpida
+  }
+
+  //Lógica de búsqueda de desechos (solo si no hay evasión de obstáculos)
+  if (searching_for_debris) {
+    if (search_start_time == 0) { // Si es la primera vez que entra en modo de búsqueda
+      search_start_time = millis(); // Guarda el tiempo de inicio
+      moveForward(65); // Comienza a moverse hacia adelante
+      Serial.println("Avanzando en busqueda...");
+    } else if (millis() - search_start_time >= SEARCH_STRAIGHT_DURATION) {
+      // Si ha pasado el tiempo de movimiento recto sin detectar obstáculos
+      stopMotors(); // Detiene los motores
+      delay(500); // Pequeña pausa
+      turnRight(85); // Gira para cambiar de dirección
+      delay(SEARCH_TURN_DURATION); // Duración del giro
+      stopMotors(); // Detiene los motores después de girar
+      delay(500); // Pequeña pausa
+      search_start_time = millis(); // Reinicia el temporizador para el siguiente segmento recto
+      moveForward(65); // Continúa avanzando en la nueva dirección
+      Serial.println("Girando y continuando busqueda...");
+    }
   }
 
   // Enviar distancia periódicamente al ESP32
@@ -59,8 +92,29 @@ void loop() {
       obstacle_avoidance_enabled = speed ? true : false;
       Serial.print("Evasion de obstaculos: ");
       Serial.println(obstacle_avoidance_enabled ? "ACTIVADA" : "DESACTIVADA");
-      return;
+      if (!obstacle_avoidance_enabled && searching_for_debris) {
+        searching_for_debris = false;
+        stopMotors();
+        Serial.println("Busqueda de desechos detenida por desactivacion de evasion.");
+      }
+      return; // Sale del loop después de procesar el comando 'E'
+    } else if (cmd == 'X') { // Manejo del comando para iniciar la búsqueda de desechos
+      searching_for_debris = true;
+      search_start_time = 0; // Se fuerza el inicio del movimiento en el siguiente loop
+      Serial.println("Iniciando busqueda de desechos.");
+      return; // Sale del loop después de procesar el comando 'X'
+    } else if (cmd == 'Z') { // Manejo del comando para detener la búsqueda de desechos
+      searching_for_debris = false;
+      stopMotors(); // Detiene los motores
+      Serial.println("Busqueda de desechos detenida.");
+      return; // Sale del loop después de procesar el comando 'Z'
     }
+    // Si se recibe un comando de movimiento directo (F, B, L, R, S), se detiene la búsqueda autónoma
+    if (searching_for_debris && strchr("FBLRS", cmd)) {
+        searching_for_debris = false;
+        Serial.println("Busqueda de desechos interrumpida por comando directo.");
+    }
+    // Validación de la velocidad para comandos de movimiento
     
     if (speed < 0 || speed > 255) {
       Serial.println("Velocidad no válida. Debe ser entre 0 y 255.");
