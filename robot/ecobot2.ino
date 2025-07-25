@@ -99,6 +99,8 @@ void runCompactorMotor(bool forward, uint8_t speed);
 void stopCompactorMotor();
 void openFrontGate();
 void closeFrontGate();
+void openBackGate();
+void closeBackGate();
 void processTimers();
 void writeServoAngle(int pin, int channel, int angle);
 void checkWiFiConnection();
