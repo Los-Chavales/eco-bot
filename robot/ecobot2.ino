@@ -31,8 +31,8 @@ IPAddress primaryDNS(192, 168, 0, 1);
 #define NEW_PWM_CHANNEL_A  0
 #define NEW_PWM_CHANNEL_B  1
 #define NEW_PWM_RESOLUTION 8
-#define COLLECTOR_SPEED 190      // 100% para recolección
-#define COMPACTOR_SPEED 210      // 75% para compactador (255*0.75)
+#define COLLECTOR_SPEED 190
+#define COMPACTOR_SPEED 220
 
 // PWM para Servos
 #define SERVO_PWM_FREQ       50      // Frecuencia de 50Hz para servos
@@ -59,7 +59,7 @@ WiFiClient telnetClient;
 #define RX2 16
 #define TX2 17
 
-uint8_t currentSpeed = 55; // Para avanzar y retroceder
+uint8_t currentSpeed = 62; // Para avanzar y retroceder
 uint8_t currentSpeed2 = 125; // Para girar
 
 // Estado del sistema
@@ -79,9 +79,9 @@ const unsigned long COLLECTOR_DURATION = 5000; // 5 segundos para el motor de re
 
 // Tiempos del proceso de compactación
 const unsigned long COMPACTOR_CLOSE_GATE_DELAY = 1500; // 1.5s para que la compuerta cierre
-const unsigned long COMPACTOR_FORWARD_DURATION = 2850; // 2.7s motor compactador hacia adelante
+const unsigned long COMPACTOR_FORWARD_DURATION = 3250; // 2.7s motor compactador hacia adelante
 const unsigned long COMPACTOR_WAIT_DURATION = 1000;    // 1s de espera entre movimientos del compactador
-const unsigned long COMPACTOR_BACKWARD_DURATION = 2600; // 2.5s motor compactador hacia atrás
+const unsigned long COMPACTOR_BACKWARD_DURATION = 2650; // 2.5s motor compactador hacia atrás
 const unsigned long COMPACTOR_OPEN_GATE_DELAY = 1500;  // 1.5s para que la compuerta abra
 
 // Temporizador recolección
@@ -316,7 +316,7 @@ void executeMovement(String command) {
   // Comandos que se envían al Nano
   if (command == "FORWARD") {
     moveForward();
-    activateCollector(false); // Detener recolección al moverse
+    activateCollector(true); // Activar recolección al moverse
     telnetPrintln("Enviando F al Nano.");
   } else if (command == "LEFT") {
     turnLeft();
@@ -343,14 +343,14 @@ void executeMovement(String command) {
   } 
   // Comandos que controla directamente el ESP32
   else if (command == "COLLECT") {
-    stopMotors(); // Detener el movimiento del robot principal
+    moveForward();
     activateCollector(true);
     // Iniciar proceso de recolección no bloqueante
     systemState = COLLECTING;
     collectorTimerStart = millis();
     pendingCompaction = true; // Marcar que hay basura pendiente
     telnetPrintln("Iniciando recolección. Basura marcada como pendiente.");
-  }  else if (command == "OPEN_BACK") { // Nuevo comando para abrir compuerta trasera
+  } else if (command == "OPEN_BACK") { // Nuevo comando para abrir compuerta trasera
     openBackGate();
     telnetPrintln("Comando para abrir compuerta trasera recibido.");
   } else if (command == "CLOSE_BACK") { // Nuevo comando para cerrar compuerta trasera
