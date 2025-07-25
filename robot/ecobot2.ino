@@ -449,18 +449,19 @@ void closeFrontGate() {
 // Servos compuerta trasera
 void openBackGate() {
   telnetPrintln("Abriendo compuerta frontal...");
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   // Servo compuerta lado derecho
-  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170); // Servo compuerta lado izquierdo
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100); // Servo seguro compuerta lado derecho
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100); // Servo compuerta lado derecho
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);  // Servo compuerta lado izquierdo
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180); // Servo seguro compuerta lado derecho
+  
   delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal ABIERTA.");
 }
 
 void closeBackGate() {
   telnetPrintln("Cerrando compuerta frontal...");
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100);
-  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180);
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170); 
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100); 
   delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal CERRADA.");
 }
