@@ -347,6 +347,12 @@ void executeMovement(String command) {
     collectorTimerStart = millis();
     pendingCompaction = true; // Marcar que hay basura pendiente
     telnetPrintln("Iniciando recolección. Basura marcada como pendiente.");
+  }  else if (command == "OPEN_BACK") { // Nuevo comando para abrir compuerta trasera
+    openBackGate();
+    telnetPrintln("Comando para abrir compuerta trasera recibido.");
+  } else if (command == "CLOSE_BACK") { // Nuevo comando para cerrar compuerta trasera
+    closeBackGate();
+    telnetPrintln("Comando para cerrar compuerta trasera recibido.");
   } else if (command.startsWith("EVASION_")) { // Nuevo comando para evasión
     uint8_t enable = (command == "EVASION_ON") ? 1 : 0;
     Serial2.write('E');
@@ -425,9 +431,6 @@ void stopCompactorMotor() {
 // Servos compuerta frontal
 void openFrontGate() {
   telnetPrintln("Abriendo compuerta frontal...");
-  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   // Servo compuerta lado derecho
-  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170); // Servo compuerta lado izquierdo
-  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100); // Servo seguro compuerta lado derecho
   writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 180); // Servo compuerta frontal (compatador)
   delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal ABIERTA.");
@@ -435,10 +438,27 @@ void openFrontGate() {
 
 void closeFrontGate() {
   telnetPrintln("Cerrando compuerta frontal...");
+  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 50);
+  delay(100); // Pequeño delay para que los servos se muevan
+  telnetPrintln("Compuerta frontal CERRADA.");
+}
+
+// Servos compuerta de atrás 
+
+void openBackGate() {
+  telnetPrintln("Abriendo compuerta frontal...");
+  writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 0);   // Servo compuerta lado derecho
+  writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 170); // Servo compuerta lado izquierdo
+  writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 100); // Servo seguro compuerta lado derecho
+  delay(100); // Pequeño delay para que los servos se muevan
+  telnetPrintln("Compuerta frontal ABIERTA.");
+}
+
+void closeBackGate() {
+  telnetPrintln("Cerrando compuerta frontal...");
   writeServoAngle(SERVO2_PIN, SERVO2_CHANNEL, 100);
   writeServoAngle(SERVO3_PIN, SERVO3_CHANNEL, 70);
   writeServoAngle(SERVO1_PIN, SERVO1_CHANNEL, 180);
-  writeServoAngle(SERVO4_PIN, SERVO4_CHANNEL, 50);
   delay(100); // Pequeño delay para que los servos se muevan
   telnetPrintln("Compuerta frontal CERRADA.");
 }
@@ -589,8 +609,13 @@ void processTelnetInput() {
         executeMovement("COLLECT");
       } else if (input == "STOP") {
         executeMovement("STOP");
-      }
-      else {
+      } else if (input == "OPEN_BACK") { // Comando Telnet para abrir compuerta trasera
+        openBackGate();
+        telnetClient.println("Compuerta trasera abierta.");
+      } else if (input == "CLOSE_BACK") { // Comando Telnet para cerrar compuerta trasera
+        closeBackGate();
+        telnetClient.println("Compuerta trasera cerrada.");
+      } else {
         telnetClient.print("Comando Telnet desconocido: ");
         telnetClient.println(input);
       }
