@@ -12,7 +12,7 @@
 #define ECHO_PIN A1
 
 // --- Parámetros ---
-#define OBSTACLE_DISTANCE_CM 25     // Distancia de detección de obstáculo
+#define OBSTACLE_DISTANCE_CM 38     // Distancia de detección de obstáculo
 #define OBSTACLE_AVOID_TIME 600     // ms para avanzar/retroceder/girar en evitado
 
 // --- Variables ---
@@ -158,7 +158,7 @@ void avoidObstacle() {
   delay(OBSTACLE_AVOID_TIME);
 
   // 3. Girar derecha
-  turnRight(85);
+  turnLeft(115);
   delay(OBSTACLE_AVOID_TIME);
 
   // 4. Avanzar

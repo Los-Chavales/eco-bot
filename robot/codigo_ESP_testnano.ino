@@ -1,8 +1,8 @@
 #include <WiFi.h>
 
 // Cambia estos datos por los de tu red WiFi
-const char* ssid = "snowden";
-const char* password = "qwertyasdfghzxcvb54321";
+const char* ssid = "GRATITUD";
+const char* password = "gracias11";
 
 // Telnet server
 WiFiServer telnetServer(23);

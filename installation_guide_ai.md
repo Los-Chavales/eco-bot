@@ -23,7 +23,11 @@
 ```bash
 # Crear entorno virtual
 python -m venv robot_env
-source robot_env/bin/activate  # En Windows: robot_env\Scripts\activate
+
+source robot_env/bin/activate  
+# En Windows: 
+Set-ExecutionPolicy Unrestricted 
+. robot_env\Scripts\activate
 
 # Instalar dependencias
 pip install ultralytics opencv-python requests numpy
