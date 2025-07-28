@@ -41,7 +41,7 @@ class RobotControlInterface:
                 # Validar comando
                 valid_commands = {
                     "FORWARD", "LEFT", "RIGHT", "STOP", "COLLECT", 
-                    "OPENB", "CLOSEB", "EVASION_ON", "EVASION_OFF", "PUSH"
+                    "OPENB", "CLOSEB", "EVASION_ON", "EVASION_OFF", "PUSH", "BACKWARD"
                 }
                 
                 if command not in valid_commands:
@@ -247,6 +247,7 @@ HTML_TEMPLATE = """
             background: linear-gradient(145deg, #ff6b6b, #ee5a52);
         }
         .btn-right { grid-column: 3; grid-row: 2; }
+        .btn-backward { grid-column: 2; grid-row: 3; }
         
         .btn-stop:hover {
             background: linear-gradient(145deg, #ff8e8e, #ff6b6b);
@@ -414,6 +415,9 @@ HTML_TEMPLATE = """
                 <button class="btn btn-left" onclick="sendCommand('LEFT')">◄<br>IZQUIERDA</button>
                 <button class="btn btn-stop" onclick="sendCommand('STOP')">⏹<br>STOP</button>
                 <button class="btn btn-right" onclick="sendCommand('RIGHT')">►<br>DERECHA</button>
+                <button class="btn btn-backward" onclick="sendCommand('BACKWARD')" style="grid-column:2;grid-row:3;">
+                    ▼<br>ATRÁS
+                </button>
             </div>
         </div>
         
@@ -634,6 +638,10 @@ HTML_TEMPLATE = """
                 case 'p':
                     event.preventDefault();
                     sendCommand('PUSH');
+                    break;
+                case 'b':
+                    event.preventDefault();
+                    sendCommand('BACKWARD');
                     break;
             }
         });

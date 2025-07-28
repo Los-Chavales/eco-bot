@@ -101,6 +101,7 @@ void stopMotors();
 void moveForward();
 void turnLeft();
 void turnRight();
+void turnBackward();
 void activateCollector(bool on);
 void runCompactorMotor(bool forward, uint8_t speed);
 void stopCompactorMotor();
@@ -333,6 +334,10 @@ void executeMovement(String command) {
     turnRight();
     activateCollector(false);
     telnetPrintln("Enviando R al Nano.");
+  } else if (command == "BACKWARD") {
+    turnBackward();
+    activateCollector(false);
+    telnetPrintln("Enviando B al Nano.");
   } else if (command == "STOP") {
     stopMotors();
     activateCollector(false);
@@ -409,6 +414,12 @@ void turnRight() {
   Serial2.write('L');
   Serial2.write(currentSpeed2);
   telnetPrintln("Comando R" + String(currentSpeed2) + " enviado al Nano.");
+}
+
+void turnBackward() {
+  Serial2.write('B');
+  Serial2.write(currentSpeed);
+  telnetPrintln("Comando B" + String(currentSpeed) + " enviado al Nano.");
 }
 
 // Motor de recolección (motor B del nuevo L298N, controlado directamente por ESP32)
